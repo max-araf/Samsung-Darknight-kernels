@@ -2088,7 +2088,7 @@ jobs:
               if "KSU_FEATURE_VEIL" not in uf_txt:
                   uf_txt = re.sub(
                       r"(KSU_FEATURE_MAX\b)",
-                      "KSU_FEATURE_VEIL = 5,\n    KSU_FEATURE_SU_PROMPT = 6,\n    KSU_FEATURE_SU_PROMPT_TIMEOUT = 7,\n    KSU_FEATURE_SU_PROMPT_DEFAULT_ALLOW = 8,\n    KSU_FEATURE_SELINUX = 9,\n    KSU_FEATURE_SHELL_SU_ADB_ONLY = 10,\n    KSU_FEATURE_ROOT_GATE = 11,\n    \1",
+                      "KSU_FEATURE_VEIL = 5,\n    KSU_FEATURE_SU_PROMPT = 6,\n    KSU_FEATURE_SU_PROMPT_TIMEOUT = 7,\n    KSU_FEATURE_SU_PROMPT_DEFAULT_ALLOW = 8,\n    KSU_FEATURE_SELINUX = 9,\n    KSU_FEATURE_SHELL_SU_ADB_ONLY = 10,\n    KSU_FEATURE_ROOT_GATE = 11,\n    KSU_FEATURE_ORIGINSU_PAD = 10004,\n    \1",
                       uf_txt,
                       count=1,
                   )
@@ -2101,9 +2101,8 @@ jobs:
               if "ksu_originsu_ext_features_register" not in fc_txt:
                   ext_feat_code = "\n".join([
                       "",
-                      '#include "selinux/selinux.h"',
-                      '#include <linux/rcupdate.h>',
-                      '#include <linux/sched/signal.h>',
+                      'extern bool getenforce(void);',
+                      'extern void setenforce(bool enforce);',
                       "",
                       "static u64 ksu_originsu_feat_vals[16] = {",
                       "    [7] = 15ULL, /* su_prompt_timeout default 15s */",
@@ -2176,9 +2175,9 @@ jobs:
               sc_compat_txt = sucompat_c.read_text(encoding="utf-8")
               if "ksu_is_shell_su_adb_only_enabled" not in sc_compat_txt:
                   adb_helper = "\n".join([
-                      '#include "selinux/selinux.h"',
-                      '#include <linux/rcupdate.h>',
-                      '#include <linux/sched/signal.h>',
+                      "#include <linux/rcupdate.h>",
+                      "#include <linux/sched.h>",
+                      "#include <linux/string.h>",
                       "extern bool ksu_is_shell_su_adb_only_enabled(void);",
                       "static bool ksu_is_shell_blocked_by_adb_only(void)",
                       "{",
@@ -2187,12 +2186,10 @@ jobs:
                       "    int depth = 0;",
                       "    if (current_uid().val != 2000 || !ksu_is_shell_su_adb_only_enabled())",
                       "        return false;",
-                      "    if (is_adbd(current_cred()))",
-                      "        return false;",
                       "    rcu_read_lock();",
                       "    p = current;",
                       "    while (p && depth < 16) {",
-                      '        if (!strcmp(p->comm, "adbd") || is_adbd(__task_cred(p))) {',
+                      '        if (!strcmp(p->comm, "adbd")) {',
                       "            from_adb = true;",
                       "            break;",
                       "        }",
@@ -2221,28 +2218,30 @@ jobs:
               dp_txt = dp_txt.replace("0x80004b62", "0x80004b65").replace("0x80004b63", "0x80004b64")
               dp_txt = dp_txt.replace('"Tracepoint"', '"Tracepoint Syscall Redirect"')
               dp_txt = dp_txt.replace("KERNEL_SU_VERSION_TAG", '"v4.2.6-f9d89712@OriginSU"')
-              m_ioctl_fn = re.search(r"long\s+ksu_supercall_handle_ioctl\s*\(\s*unsigned\s+int\s+cmd\s*,\s*void\s+__user\s*\*arg\s*\)\s*\{", dp_txt)
-              assert m_ioctl_fn, "ksu_supercall_handle_ioctl not found in supercall/dispatch.c"
-              ext_ioctl_intercept = "\n".join([
-                  "",
-                  "    /* OriginSU v4.2.6 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
-                  "    switch (cmd) {",
-                  "    case 0xc0004b17U:",
-                  "    case 0x40004b17U:",
-                  "    case 0xc0004b18U:",
-                  "    case 0x40004b1aU:",
-                  "    case 0x80004b66U:",
-                  "    case 0xc0004b67U:",
-                  "    case 0xc0004b69U:",
-                  "    case 0x80004b6aU:",
-                  "        return 0;",
-                  "    case 0xc0004b19U: /* pollSuRequest: no pending prompt */",
-                  "        return -EAGAIN;",
-                  "    default:",
-                  "        break;",
-                  "    }",
-              ])
-              dp_txt = dp_txt[:m_ioctl_fn.end()] + ext_ioctl_intercept + dp_txt[m_ioctl_fn.end():]
+              m_ioctl_fn = re.search(r"\b(?:long|int)\s+ksu_supercall_handle_ioctl\s*\(([^)]*)\)\s*\{", dp_txt, re.M | re.S)
+              if m_ioctl_fn:
+                  first_param = m_ioctl_fn.group(1).split(",")[0].strip()
+                  cmd_var = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", first_param)[-1]
+                  ext_ioctl_intercept = "\n".join([
+                      "",
+                      "    /* OriginSU v4.2.6 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
+                      f"    switch ((unsigned int){cmd_var}) {{",
+                      "    case 0xc0004b17U:",
+                      "    case 0x40004b17U:",
+                      "    case 0xc0004b18U:",
+                      "    case 0x40004b1aU:",
+                      "    case 0x80004b66U:",
+                      "    case 0xc0004b67U:",
+                      "    case 0xc0004b69U:",
+                      "    case 0x80004b6aU:",
+                      "        return 0;",
+                      "    case 0xc0004b19U: /* pollSuRequest: no pending prompt */",
+                      "        return -EAGAIN;",
+                      "    default:",
+                      "        break;",
+                      "    }",
+                  ])
+                  dp_txt = dp_txt[:m_ioctl_fn.end()] + ext_ioctl_intercept + dp_txt[m_ioctl_fn.end():]
               disp_c.write_text(dp_txt, encoding="utf-8")
               log("[OriginSU v4.2.6] Updated supercall/dispatch.c with uapi_version=6, features=12, GET_FULL_VERSION (0x80004b64), GET_HOOK_TYPE (0x80004b65), and extended ioctls (0x4b17..0x4b1a, 0x4b66..0x4b6a)")
 
@@ -2539,6 +2538,31 @@ jobs:
               "}",
               "",
           ])
+          m_anon_ioctl = re.search(r"\b(?:static\s+)?(?:long|int)\s+anon_ksu_ioctl\s*\(([^)]*)\)\s*\{", sc_txt, re.M | re.S)
+          if m_anon_ioctl:
+              params = [p.strip() for p in m_anon_ioctl.group(1).split(",")]
+              cmd_var = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", params[1])[-1] if len(params) >= 2 else "cmd"
+              anon_intercept = "\n".join([
+                  "",
+                  "    /* OriginSU v4.2.6 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
+                  f"    switch ((unsigned int){cmd_var}) {{",
+                  "    case 0xc0004b17U:",
+                  "    case 0x40004b17U:",
+                  "    case 0xc0004b18U:",
+                  "    case 0x40004b1aU:",
+                  "    case 0x80004b66U:",
+                  "    case 0xc0004b67U:",
+                  "    case 0xc0004b69U:",
+                  "    case 0x80004b6aU:",
+                  "        return 0;",
+                  "    case 0xc0004b19U:",
+                  "        return -EAGAIN;",
+                  "    default:",
+                  "        break;",
+                  "    }",
+              ])
+              sc_txt = sc_txt[:m_anon_ioctl.end()] + anon_intercept + sc_txt[m_anon_ioctl.end():]
+              log("[OriginSU v4.2.6] Hooked anon_ksu_ioctl in supercall/supercall.c for extended OriginSU ioctls")
           sc_txt += "\n" + reboot_bridge
           sc_c.write_text(sc_txt, encoding="utf-8")
           log("[Fix #8a] Added full SUSFS v2.3.0 NON-GKI / v1.5.5 dual-protocol and ksu_handle_sys_reboot to supercall/supercall.c")
