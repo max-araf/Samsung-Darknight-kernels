@@ -2086,11 +2086,11 @@ jobs:
           if uapi_feat.exists():
               uf_txt = uapi_feat.read_text(encoding="utf-8")
               if "KSU_FEATURE_VEIL" not in uf_txt:
-                  uf_txt = re.sub(
-                      r"(KSU_FEATURE_MAX\b)",
-                      "KSU_FEATURE_VEIL = 5,\n    KSU_FEATURE_SU_PROMPT = 6,\n    KSU_FEATURE_SU_PROMPT_TIMEOUT = 7,\n    KSU_FEATURE_SU_PROMPT_DEFAULT_ALLOW = 8,\n    KSU_FEATURE_SELINUX = 9,\n    KSU_FEATURE_SHELL_SU_ADB_ONLY = 10,\n    KSU_FEATURE_ROOT_GATE = 11,\n    KSU_FEATURE_ORIGINSU_PAD = 10004,\n    \1",
-                      uf_txt,
-                      count=1,
+                  assert "KSU_FEATURE_MAX" in uf_txt, "KSU_FEATURE_MAX not found in uapi/feature.h"
+                  uf_txt = uf_txt.replace(
+                      "KSU_FEATURE_MAX",
+                      "KSU_FEATURE_VEIL = 5,\n    KSU_FEATURE_SU_PROMPT = 6,\n    KSU_FEATURE_SU_PROMPT_TIMEOUT = 7,\n    KSU_FEATURE_SU_PROMPT_DEFAULT_ALLOW = 8,\n    KSU_FEATURE_SELINUX = 9,\n    KSU_FEATURE_SHELL_SU_ADB_ONLY = 10,\n    KSU_FEATURE_ROOT_GATE = 11,\n    KSU_FEATURE_ORIGINSU_PAD = 10004,\n    KSU_FEATURE_MAX",
+                      1,
                   )
                   uapi_feat.write_text(uf_txt, encoding="utf-8")
                   log("[OriginSU v4.2.6] Added enum ksu_feature_id 5..11 to uapi/feature.h")
@@ -2156,15 +2156,21 @@ jobs:
                       "}",
                       "",
                   ])
-                  m_finit = re.search(r"void\s+(?:__init\s+)?ksu_feature_init\s*\(\s*void\s*\)\s*\{", fc_txt)
-                  assert m_finit, "ksu_feature_init not found in policy/feature.c"
-                  fc_txt = (
-                      fc_txt[:m_finit.start()]
-                      + ext_feat_code
-                      + "\n"
-                      + fc_txt[m_finit.start():m_finit.end()]
-                      + "\n\tksu_originsu_ext_features_register();\n"
-                      + fc_txt[m_finit.end():]
+                  new_finit_fn = "\n".join([
+                      ext_feat_code,
+                      "void __init ksu_feature_init(void)",
+                      "{",
+                      "\tint i;",
+                      "\tfor (i = 0; i < KSU_FEATURE_MAX; i++) {",
+                      "\t\tfeature_handlers[i] = NULL;",
+                      "\t}",
+                      "\tksu_originsu_ext_features_register();",
+                      "}",
+                  ])
+                  fc_txt = replace_c_function(
+                      fc_txt,
+                      r"void\s+(?:__init\s+)?ksu_feature_init\s*\(\s*void\s*\)\s*\{",
+                      new_finit_fn,
                   )
                   feat_c.write_text(fc_txt, encoding="utf-8")
                   log("[OriginSU v4.2.6] Registered feature handlers 5..11 (veil, su_prompt, selinux, shell_su_adb_only, root_gate) in policy/feature.c")
@@ -2213,19 +2219,17 @@ jobs:
           if disp_c.exists():
               dp_txt = disp_c.read_text(encoding="utf-8")
               dp_txt = re.sub(r"(\.uapi_version\s*=\s*)[^,;]+", r"\g<1>6", dp_txt)
-              dp_txt = re.sub(r"(\.features\s*=\s*)0x2714\b", r"\g<1>12", dp_txt)
+              dp_txt = re.sub(r"(\.features\s*=\s*)(?:0x2714|KSU_FEATURE_MAX)\b", r"\g<1>12", dp_txt)
               dp_txt = dp_txt.replace("KSU_IOCTL_GET_HOOK_MODE", "0x80004b65").replace("KSU_IOCTL_GET_VERSION_TAG", "0x80004b64")
               dp_txt = dp_txt.replace("0x80004b62", "0x80004b65").replace("0x80004b63", "0x80004b64")
               dp_txt = dp_txt.replace('"Tracepoint"', '"Tracepoint Syscall Redirect"')
               dp_txt = dp_txt.replace("KERNEL_SU_VERSION_TAG", '"v4.2.6-f9d89712@OriginSU"')
               m_ioctl_fn = re.search(r"\b(?:long|int)\s+ksu_supercall_handle_ioctl\s*\(([^)]*)\)\s*\{", dp_txt, re.M | re.S)
               if m_ioctl_fn:
-                  first_param = m_ioctl_fn.group(1).split(",")[0].strip()
-                  cmd_var = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", first_param)[-1]
                   ext_ioctl_intercept = "\n".join([
                       "",
                       "    /* OriginSU v4.2.6 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
-                      f"    switch ((unsigned int){cmd_var}) {{",
+                      "    switch (cmd) {",
                       "    case 0xc0004b17U:",
                       "    case 0x40004b17U:",
                       "    case 0xc0004b18U:",
