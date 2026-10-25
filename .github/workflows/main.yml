@@ -1131,24 +1131,15 @@ jobs:
           helper = "\n".join([
               "",
               "#include <linux/sched/signal.h>",
-              "/* DARKNIGHT_MANAGER_SECCOMP_FD_FIX */",
+              "#include \"infra/seccomp_cache.h\"",
+              "/* DARKNIGHT_MANAGER_SECCOMP_KEEP_ENABLED_FILTER */",
               "void ksu_disable_seccomp_for_manager(void)",
               "{",
-              "    struct task_struct *t;",
-              "",
-              "    if (current->seccomp.mode != 0 || current->seccomp.filter != NULL) {",
-              "        disable_seccomp();",
-              "    }",
-              "    if (current->sighand) {",
-              "        spin_lock_irq(&current->sighand->siglock);",
-              "        for_each_thread(current, t) {",
-              "            clear_tsk_thread_flag(t, TIF_SECCOMP);",
-              "            t->seccomp.mode = 0;",
-              "        }",
-              "        spin_unlock_irq(&current->sighand->siglock);",
-              "    } else {",
-              "        clear_tsk_thread_flag(current, TIF_SECCOMP);",
-              "        current->seccomp.mode = 0;",
+              "    /* Keep Seccomp ENABLED (SECCOMP_MODE_FILTER / TIF_SECCOMP active) as requested.",
+              "     * Manager communicates via pre-installed [ksu_driver] fd ioctl & prctl, which",
+              "     * are permitted under Android's standard seccomp filter without disabling seccomp. */",
+              "    if (current->seccomp.filter) {",
+              "        ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);",
               "    }",
               "}",
               "",
@@ -2090,6 +2081,137 @@ jobs:
               uapi_sc.write_text(utxt, encoding="utf-8")
               log("[OriginSU v4.2.6] Updated uapi/supercall.h with KSU_UAPI_VERSION=6 and KSU_INSTALL_MAGIC2=0xcafebabe")
 
+          # Register all OriginSU v4.2.6 feature handlers (IDs 5..11) in policy/feature.c
+          uapi_feat = ksu_dir.parent / "uapi" / "feature.h"
+          if uapi_feat.exists():
+              uf_txt = uapi_feat.read_text(encoding="utf-8")
+              if "KSU_FEATURE_VEIL" not in uf_txt:
+                  uf_txt = re.sub(
+                      r"(KSU_FEATURE_MAX\b)",
+                      "KSU_FEATURE_VEIL = 5,\n    KSU_FEATURE_SU_PROMPT = 6,\n    KSU_FEATURE_SU_PROMPT_TIMEOUT = 7,\n    KSU_FEATURE_SU_PROMPT_DEFAULT_ALLOW = 8,\n    KSU_FEATURE_SELINUX = 9,\n    KSU_FEATURE_SHELL_SU_ADB_ONLY = 10,\n    KSU_FEATURE_ROOT_GATE = 11,\n    \1",
+                      uf_txt,
+                      count=1,
+                  )
+                  uapi_feat.write_text(uf_txt, encoding="utf-8")
+                  log("[OriginSU v4.2.6] Added enum ksu_feature_id 5..11 to uapi/feature.h")
+
+          feat_c = ksu_dir / "policy" / "feature.c"
+          if feat_c.exists():
+              fc_txt = feat_c.read_text(encoding="utf-8")
+              if "ksu_originsu_ext_features_register" not in fc_txt:
+                  ext_feat_code = "\n".join([
+                      "",
+                      '#include "selinux/selinux.h"',
+                      '#include <linux/rcupdate.h>',
+                      '#include <linux/sched/signal.h>',
+                      "",
+                      "static u64 ksu_originsu_feat_vals[16] = {",
+                      "    [7] = 15ULL, /* su_prompt_timeout default 15s */",
+                      "};",
+                      "",
+                      "bool ksu_is_shell_su_adb_only_enabled(void)",
+                      "{",
+                      "    return ksu_originsu_feat_vals[10] != 0;",
+                      "}",
+                      "",
+                      "static int ksu_feat_veil_get(u64 *value) { *value = ksu_originsu_feat_vals[5]; return 0; }",
+                      "static int ksu_feat_veil_set(u64 value) { ksu_originsu_feat_vals[5] = value ? 1ULL : 0ULL; return 0; }",
+                      "static int ksu_feat_su_prompt_get(u64 *value) { *value = ksu_originsu_feat_vals[6]; return 0; }",
+                      "static int ksu_feat_su_prompt_set(u64 value) { ksu_originsu_feat_vals[6] = value ? 1ULL : 0ULL; return 0; }",
+                      "static int ksu_feat_su_prompt_timeout_get(u64 *value) { *value = ksu_originsu_feat_vals[7]; return 0; }",
+                      "static int ksu_feat_su_prompt_timeout_set(u64 value) { ksu_originsu_feat_vals[7] = value; return 0; }",
+                      "static int ksu_feat_su_prompt_def_get(u64 *value) { *value = ksu_originsu_feat_vals[8]; return 0; }",
+                      "static int ksu_feat_su_prompt_def_set(u64 value) { ksu_originsu_feat_vals[8] = value ? 1ULL : 0ULL; return 0; }",
+                      "static int ksu_feat_selinux_get(u64 *value)",
+                      "{",
+                      "    *value = getenforce() ? 0ULL : 1ULL;",
+                      "    return 0;",
+                      "}",
+                      "static int ksu_feat_selinux_set(u64 value)",
+                      "{",
+                      "    ksu_originsu_feat_vals[9] = value ? 1ULL : 0ULL;",
+                      "    setenforce(value == 0);",
+                      "    return 0;",
+                      "}",
+                      "static int ksu_feat_shell_adb_get(u64 *value) { *value = ksu_originsu_feat_vals[10]; return 0; }",
+                      "static int ksu_feat_shell_adb_set(u64 value) { ksu_originsu_feat_vals[10] = value ? 1ULL : 0ULL; return 0; }",
+                      "static int ksu_feat_root_gate_get(u64 *value) { *value = ksu_originsu_feat_vals[11]; return 0; }",
+                      "static int ksu_feat_root_gate_set(u64 value) { ksu_originsu_feat_vals[11] = value ? 1ULL : 0ULL; return 0; }",
+                      "",
+                      "static const struct ksu_feature_handler ksu_originsu_ext_handlers[] = {",
+                      '    { .feature_id = 5,  .name = "veil",                    .get_handler = ksu_feat_veil_get,              .set_handler = ksu_feat_veil_set },',
+                      '    { .feature_id = 6,  .name = "su_prompt",               .get_handler = ksu_feat_su_prompt_get,         .set_handler = ksu_feat_su_prompt_set },',
+                      '    { .feature_id = 7,  .name = "su_prompt_timeout",       .get_handler = ksu_feat_su_prompt_timeout_get, .set_handler = ksu_feat_su_prompt_timeout_set },',
+                      '    { .feature_id = 8,  .name = "su_prompt_default_allow", .get_handler = ksu_feat_su_prompt_def_get,     .set_handler = ksu_feat_su_prompt_def_set },',
+                      '    { .feature_id = 9,  .name = "selinux",                 .get_handler = ksu_feat_selinux_get,           .set_handler = ksu_feat_selinux_set },',
+                      '    { .feature_id = 10, .name = "shell_su_adb_only",       .get_handler = ksu_feat_shell_adb_get,         .set_handler = ksu_feat_shell_adb_set },',
+                      '    { .feature_id = 11, .name = "root_gate",               .get_handler = ksu_feat_root_gate_get,         .set_handler = ksu_feat_root_gate_set },',
+                      "};",
+                      "",
+                      "static void ksu_originsu_ext_features_register(void)",
+                      "{",
+                      "    size_t i;",
+                      "    for (i = 0; i < ARRAY_SIZE(ksu_originsu_ext_handlers); i++) {",
+                      "        (void)ksu_register_feature_handler(&ksu_originsu_ext_handlers[i]);",
+                      "    }",
+                      "}",
+                      "",
+                  ])
+                  m_finit = re.search(r"void\s+(?:__init\s+)?ksu_feature_init\s*\(\s*void\s*\)\s*\{", fc_txt)
+                  assert m_finit, "ksu_feature_init not found in policy/feature.c"
+                  fc_txt = (
+                      fc_txt[:m_finit.start()]
+                      + ext_feat_code
+                      + "\n"
+                      + fc_txt[m_finit.start():m_finit.end()]
+                      + "\n\tksu_originsu_ext_features_register();\n"
+                      + fc_txt[m_finit.end():]
+                  )
+                  feat_c.write_text(fc_txt, encoding="utf-8")
+                  log("[OriginSU v4.2.6] Registered feature handlers 5..11 (veil, su_prompt, selinux, shell_su_adb_only, root_gate) in policy/feature.c")
+
+          # Enforce shell_su_adb_only (Feature ID 10) in feature/sucompat.c when enabled
+          sucompat_c = ksu_dir / "feature" / "sucompat.c"
+          if sucompat_c.exists():
+              sc_compat_txt = sucompat_c.read_text(encoding="utf-8")
+              if "ksu_is_shell_su_adb_only_enabled" not in sc_compat_txt:
+                  adb_helper = "\n".join([
+                      '#include "selinux/selinux.h"',
+                      '#include <linux/rcupdate.h>',
+                      '#include <linux/sched/signal.h>',
+                      "extern bool ksu_is_shell_su_adb_only_enabled(void);",
+                      "static bool ksu_is_shell_blocked_by_adb_only(void)",
+                      "{",
+                      "    struct task_struct *p;",
+                      "    bool from_adb = false;",
+                      "    int depth = 0;",
+                      "    if (current_uid().val != 2000 || !ksu_is_shell_su_adb_only_enabled())",
+                      "        return false;",
+                      "    if (is_adbd(current_cred()))",
+                      "        return false;",
+                      "    rcu_read_lock();",
+                      "    p = current;",
+                      "    while (p && depth < 16) {",
+                      '        if (!strcmp(p->comm, "adbd") || is_adbd(__task_cred(p))) {',
+                      "            from_adb = true;",
+                      "            break;",
+                      "        }",
+                      "        p = rcu_dereference(p->real_parent);",
+                      "        depth++;",
+                      "    }",
+                      "    rcu_read_unlock();",
+                      "    return !from_adb;",
+                      "}",
+                      "",
+                  ])
+                  sc_compat_txt = adb_helper + sc_compat_txt
+                  sc_compat_txt = sc_compat_txt.replace(
+                      "if (!ksu_is_allow_uid_for_current(current_uid().val))",
+                      "if (!ksu_is_allow_uid_for_current(current_uid().val) || ksu_is_shell_blocked_by_adb_only())",
+                  )
+                  sucompat_c.write_text(sc_compat_txt, encoding="utf-8")
+                  log("[OriginSU v4.2.6] Wired shell_su_adb_only check in feature/sucompat.c")
+
           disp_c = ksu_dir / "supercall" / "dispatch.c"
           if disp_c.exists():
               dp_txt = disp_c.read_text(encoding="utf-8")
@@ -2099,8 +2221,30 @@ jobs:
               dp_txt = dp_txt.replace("0x80004b62", "0x80004b65").replace("0x80004b63", "0x80004b64")
               dp_txt = dp_txt.replace('"Tracepoint"', '"Tracepoint Syscall Redirect"')
               dp_txt = dp_txt.replace("KERNEL_SU_VERSION_TAG", '"v4.2.6-f9d89712@OriginSU"')
+              m_ioctl_fn = re.search(r"long\s+ksu_supercall_handle_ioctl\s*\(\s*unsigned\s+int\s+cmd\s*,\s*void\s+__user\s*\*arg\s*\)\s*\{", dp_txt)
+              assert m_ioctl_fn, "ksu_supercall_handle_ioctl not found in supercall/dispatch.c"
+              ext_ioctl_intercept = "\n".join([
+                  "",
+                  "    /* OriginSU v4.2.6 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
+                  "    switch (cmd) {",
+                  "    case 0xc0004b17U:",
+                  "    case 0x40004b17U:",
+                  "    case 0xc0004b18U:",
+                  "    case 0x40004b1aU:",
+                  "    case 0x80004b66U:",
+                  "    case 0xc0004b67U:",
+                  "    case 0xc0004b69U:",
+                  "    case 0x80004b6aU:",
+                  "        return 0;",
+                  "    case 0xc0004b19U: /* pollSuRequest: no pending prompt */",
+                  "        return -EAGAIN;",
+                  "    default:",
+                  "        break;",
+                  "    }",
+              ])
+              dp_txt = dp_txt[:m_ioctl_fn.end()] + ext_ioctl_intercept + dp_txt[m_ioctl_fn.end():]
               disp_c.write_text(dp_txt, encoding="utf-8")
-              log("[OriginSU v4.2.6] Updated supercall/dispatch.c with uapi_version=6, features=12, GET_FULL_VERSION (0x80004b64), and GET_HOOK_TYPE (0x80004b65)")
+              log("[OriginSU v4.2.6] Updated supercall/dispatch.c with uapi_version=6, features=12, GET_FULL_VERSION (0x80004b64), GET_HOOK_TYPE (0x80004b65), and extended ioctls (0x4b17..0x4b1a, 0x4b66..0x4b6a)")
 
           sc_c = ksu_dir / "supercall" / "supercall.c"
           sc_txt = sc_c.read_text(encoding="utf-8")
@@ -2608,6 +2752,7 @@ jobs:
             --enable KALLSYMS \
             --enable KALLSYMS_ALL \
             --enable SECURITY_SELINUX \
+            --enable SECURITY_SELINUX_DEVELOP \
             --disable SECURITY_SELINUX_ALWAYS_PERMISSIVE \
             --disable SECURITY_SELINUX_DISABLE
 
@@ -2785,6 +2930,10 @@ jobs:
             unzip -p "${ORIGINSU_APK}" lib/arm64-v8a/libksud.so > "${AK3_DIR}/ksud"
             unzip -p "${ORIGINSU_APK}" lib/arm64-v8a/libadbroot.so > "${AK3_DIR}/libadbroot.so"
             unzip -p "${ORIGINSU_APK}" lib/armeabi-v7a/libksud.so > "${AK3_DIR}/ksud32" 2>/dev/null || true
+            mkdir -p "${AK3_DIR}/originzygisk"
+            unzip -p "${ORIGINSU_APK}" assets/originzygisk/payload.zip > "${AK3_DIR}/originzygisk/payload.zip" 2>/dev/null || true
+            unzip -p "${ORIGINSU_APK}" assets/originzygisk/setup.sh > "${AK3_DIR}/originzygisk/setup.sh" 2>/dev/null || true
+            unzip -p "${ORIGINSU_APK}" assets/originzygisk/launch.sh > "${AK3_DIR}/originzygisk/launch.sh" 2>/dev/null || true
             chmod 0755 "${AK3_DIR}/ksud" "${AK3_DIR}/libadbroot.so"
             [ -f "${AK3_DIR}/ksud32" ] && chmod 0755 "${AK3_DIR}/ksud32"
           fi
@@ -2856,6 +3005,12 @@ jobs:
               chown 0:0 /data/adb/ksu/lib/libadbroot.so 2>/dev/null || true
               chmod 0755 /data/adb/ksu/lib/libadbroot.so
               chcon u:object_r:adb_data_file:s0 /data/adb/ksu/lib/libadbroot.so 2>/dev/null || true
+            fi
+            if [ -d "$home/originzygisk" ] && [ -s "$home/originzygisk/payload.zip" ]; then
+              mkdir -p /data/adb/ksu/originzygisk
+              cp -f "$home/originzygisk/"* /data/adb/ksu/originzygisk/ 2>/dev/null || true
+              chmod 0755 /data/adb/ksu/originzygisk/*.sh 2>/dev/null || true
+              chown -R 0:0 /data/adb/ksu/originzygisk 2>/dev/null || true
             fi
           fi
 
