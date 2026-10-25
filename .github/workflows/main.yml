@@ -684,7 +684,7 @@ jobs:
           ccflags-y += -DSAMSUNG_SELINUX_PORTING
           endif
           ccflags-$(CONFIG_KSU_SUSFS) += -DKSU_SUSFS
-          ccflags-y += -UKSU_VERSION -DKSU_VERSION=35397 -UKSU_VERSION_TAG -DKSU_VERSION_TAG=\"v4.2.6-f9d89712@OriginSU\"
+          ccflags-y += -UKSU_VERSION -DKSU_VERSION=35397
           ''')
           kbuild_anchor = '# Keep a new line here!! Because someone may append config'
           src = src.replace(kbuild_anchor, block + '\n' + kbuild_anchor, 1)
@@ -2070,14 +2070,35 @@ jobs:
               log("[SUSFS] Wired susfs_init() into KernelSU-Next/kernel/core/init.c")
 
           # Wire ksu_handle_sys_reboot, ksu_handle_legacy_prctl & ksu_handle_susfs_command in supercall/supercall.c
-          # Patch supercall/dispatch.c for OriginSU v4.2.6 (35397, uapi: 6, full_version, hook_type, dynamic_manager, get_managers)
+          # Patch include/ksu.h and supercall/dispatch.c for OriginSU v4.2.6 (35397, uapi: 6, full_version, hook_type)
+          ksu_h = ksu_dir / "include" / "ksu.h"
+          if ksu_h.exists():
+              kh_txt = ksu_h.read_text(encoding="utf-8")
+              kh_txt = re.sub(
+                  r"#define\s+KERNEL_SU_VERSION_TAG\s+.*",
+                  '#undef KERNEL_SU_VERSION\n#define KERNEL_SU_VERSION 35397\n#define KERNEL_SU_VERSION_TAG "v4.2.6-f9d89712@OriginSU"',
+                  kh_txt,
+              )
+              ksu_h.write_text(kh_txt, encoding="utf-8")
+              log("[OriginSU v4.2.6] Updated include/ksu.h with KERNEL_SU_VERSION=35397 and KERNEL_SU_VERSION_TAG=\"v4.2.6-f9d89712@OriginSU\"")
+
+          uapi_sc = ksu_dir.parent / "uapi" / "supercall.h"
+          if uapi_sc.exists():
+              utxt = uapi_sc.read_text(encoding="utf-8")
+              utxt = re.sub(r"(#define\s+KSU_UAPI_VERSION\s+)\d+", r"\g<1>6", utxt)
+              utxt = re.sub(r"(#define\s+KSU_INSTALL_MAGIC2\s+)0x[0-9a-fA-FA-F]+U?", r"\g<1>0xcafebabeU", utxt)
+              uapi_sc.write_text(utxt, encoding="utf-8")
+              log("[OriginSU v4.2.6] Updated uapi/supercall.h with KSU_UAPI_VERSION=6 and KSU_INSTALL_MAGIC2=0xcafebabe")
+
           disp_c = ksu_dir / "supercall" / "dispatch.c"
           if disp_c.exists():
               dp_txt = disp_c.read_text(encoding="utf-8")
-              dp_txt = re.sub(r"info\.uapi_version\s*=\s*\d+\s*;", "info.uapi_version = 6; info.features = 12;", dp_txt)
+              dp_txt = re.sub(r"(\.uapi_version\s*=\s*)[^,;]+", r"\g<1>6", dp_txt)
+              dp_txt = re.sub(r"(\.features\s*=\s*)0x2714\b", r"\g<1>12", dp_txt)
+              dp_txt = dp_txt.replace("KSU_IOCTL_GET_HOOK_MODE", "0x80004b65").replace("KSU_IOCTL_GET_VERSION_TAG", "0x80004b64")
               dp_txt = dp_txt.replace("0x80004b62", "0x80004b65").replace("0x80004b63", "0x80004b64")
               dp_txt = dp_txt.replace('"Tracepoint"', '"Tracepoint Syscall Redirect"')
-              dp_txt = dp_txt.replace('KSU_VERSION_TAG', '"v4.2.6-f9d89712@OriginSU"')
+              dp_txt = dp_txt.replace("KERNEL_SU_VERSION_TAG", '"v4.2.6-f9d89712@OriginSU"')
               disp_c.write_text(dp_txt, encoding="utf-8")
               log("[OriginSU v4.2.6] Updated supercall/dispatch.c with uapi_version=6, features=12, GET_FULL_VERSION (0x80004b64), and GET_HOOK_TYPE (0x80004b65)")
 
@@ -2685,7 +2706,7 @@ jobs:
             KSU_MANAGER_PACKAGE="${INPUT_MGR_PKG}" \
             KSU_NEXT_MANAGER_SIZE="${INPUT_MGR_SIZE}" \
             KSU_NEXT_MANAGER_HASH="${INPUT_MGR_HASH}" \
-            mm/maccess.o fs/namespace.o fs/susfs.o fs/exec.o fs/stat.o fs/readdir.o fs/proc/cmdline.o fs/proc/task_mmu.o kernel/reboot.o kernel/sys.o \
+            mm/maccess.o fs/namespace.o fs/susfs.o fs/exec.o fs/open.o fs/stat.o fs/readdir.o fs/proc/cmdline.o fs/proc/task_mmu.o kernel/reboot.o kernel/sys.o \
             drivers/soc/samsung/exynos-el3_mon.o drivers/cpufreq/exynos-acme.o drivers/soc/samsung/cal-if/vclk.o drivers/block/zram/zram_drv.o drivers/usb/gadget/function/f_mtp.o drivers/kernelsu/ \
             2>&1 | tee "${DIAG_DIR}/ksu-preflight-build.log"
 
