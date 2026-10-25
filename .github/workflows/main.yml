@@ -1084,37 +1084,16 @@ jobs:
           apk_txt = apk_c.read_text(encoding="utf-8")
           m_apk = re.search(r"bool\s+is_manager_apk\s*\(\s*char\s*\*path\s*\)\s*\{", apk_txt)
           assert m_apk, "is_manager_apk(char *path) not found in manager/apk_sign.c"
-          apk_decl = "char ksu_manager_libksud_path[256] = {0};\n\n"
           apk_fastpath = "\n".join([
               "",
               '\tif (path && (strstr(path, "/com.originsu.manager-") || strstr(path, "/com.originsu.manager/"))) {',
-              "\t\tchar *slash = strrchr(path, '/');",
-              '\t\tif (slash && (size_t)(slash - path) + sizeof("/lib/arm64/libksud.so") < sizeof(ksu_manager_libksud_path)) {',
-              "\t\t\tmemcpy(ksu_manager_libksud_path, path, slash - path);",
-              '\t\t\tstrcpy(ksu_manager_libksud_path + (slash - path), "/lib/arm64/libksud.so");',
-              "\t\t}",
-              '\t\tpr_info("OriginSU: matched manager package path %s (libksud=%s)\\n", path, ksu_manager_libksud_path);',
+              '\t\tpr_info("OriginSU: matched manager package path %s\\n", path);',
               "\t\treturn true;",
               "\t}",
           ])
-          apk_txt = apk_txt[:m_apk.start()] + apk_decl + apk_txt[m_apk.start():m_apk.end()] + apk_fastpath + apk_txt[m_apk.end():]
+          apk_txt = apk_txt[:m_apk.end()] + apk_fastpath + apk_txt[m_apk.end():]
           apk_c.write_text(apk_txt, encoding="utf-8")
-          log("[Fix #6a] Injected OriginSU v4.2.6 (com.originsu.manager) fast-path & libksud capture in manager/apk_sign.c")
-
-          sucompat_c = ksu_dir / "feature" / "sucompat.c"
-          if sucompat_c.exists():
-              sc_su = sucompat_c.read_text(encoding="utf-8")
-              if "ksu_manager_libksud_path" not in sc_su:
-                  sc_su = "extern char ksu_manager_libksud_path[256];\n" + sc_su
-                  sc_su, su_cnt = re.subn(
-                      r"(filp\s*=\s*filp_open\s*\(\s*KSUD_PATH\s*,\s*O_RDONLY\s*\|\s*O_LARGEFILE\s*,\s*0\s*\)\s*;)",
-                      r'\1\n\tif (IS_ERR(filp) && ksu_manager_libksud_path[0] != \'\\0\')\n\t\tfilp = filp_open(ksu_manager_libksud_path, O_RDONLY | O_LARGEFILE, 0);\n\tif (IS_ERR(filp))\n\t\tfilp = filp_open("/data/adb/ksu/bin/ksud32", O_RDONLY | O_LARGEFILE, 0);\n\tif (IS_ERR(filp))\n\t\tfilp = filp_open("/system/bin/sh", O_RDONLY | O_LARGEFILE, 0);',
-                      sc_su,
-                      count=1,
-                  )
-                  assert su_cnt == 1, "filp_open(KSUD_PATH, ...) not found in feature/sucompat.c"
-                  sucompat_c.write_text(sc_su, encoding="utf-8")
-                  log("[Fix #6c] Added ksu_manager_libksud_path, ksud32 (32-bit), and /system/bin/sh fallback to feature/sucompat.c")
+          log("[Fix #6a] Injected OriginSU v4.2.6 (com.originsu.manager) package-path fast-path in manager/apk_sign.c")
 
           tt_c = ksu_dir / "manager" / "throne_tracker.c"
           tt_txt = tt_c.read_text(encoding="utf-8")
@@ -2560,10 +2539,28 @@ jobs:
           fmtp_c = ws / "drivers" / "usb" / "gadget" / "function" / "f_mtp.c"
           if fmtp_c.exists():
               mtxt = fmtp_c.read_text(encoding="utf-8")
-              if "DECLARE_USB_FUNCTION_INIT(mtp_samsung" not in mtxt and "DECLARE_USB_FUNCTION_INIT(mtp," in mtxt:
-                  mtxt += "\n#ifdef CONFIG_USB_CONFIGFS_F_MTP\nDECLARE_USB_FUNCTION_INIT(mtp_samsung, mtp_alloc_inst, mtp_alloc);\n#endif\n"
+              if "DECLARE_USB_FUNCTION_INIT(mtp," not in mtxt and "alloc_inst_mtp_ptp" in mtxt:
+                  mtxt += "\n#ifdef CONFIG_USB_CONFIGFS_F_MTP\nDECLARE_USB_FUNCTION_INIT(mtp, alloc_inst_mtp_ptp, function_alloc_mtp_ptp);\n#endif\n"
                   fmtp_c.write_text(mtxt, encoding="utf-8")
                   log("[Tweaks] Added MTP for GSIs + Stock OneUI dual USB function registration in drivers/usb/gadget/function/f_mtp.c")
+
+          # 32-bit (compat) + 64-bit dual-ABI VFS sucompat hooks in fs/open.c and fs/stat.c
+          open_c = ws / "fs" / "open.c"
+          if open_c.exists():
+              otxt = open_c.read_text(encoding="utf-8")
+              if "ksu_handle_faccessat" not in otxt:
+                  odecl = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n"
+                  m_fa = re.search(r"long\s+do_faccessat\s*\(\s*int\s+dfd\s*,\s*const\s+char\s+__user\s*\*filename\s*,\s*int\s+mode\s*\)\s*\{", otxt)
+                  if m_fa:
+                      otxt = otxt[:m_fa.start()] + odecl + otxt[m_fa.start():]
+                      m_fa = re.search(r"long\s+do_faccessat\s*\(\s*int\s+dfd\s*,\s*const\s+char\s+__user\s*\*filename\s*,\s*int\s+mode\s*\)\s*\{", otxt)
+                      m_if = re.search(r"\bif\s*\(", otxt[m_fa.end():])
+                      if m_if:
+                          pos = m_fa.end() + m_if.start()
+                          ohook = "#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif\n\t"
+                          otxt = otxt[:pos] + ohook + otxt[pos:]
+                          open_c.write_text(otxt, encoding="utf-8")
+                          log("[OriginSU 32/64-bit] Wired ksu_handle_faccessat into fs/open.c do_faccessat() for 32-bit & 64-bit dual-ABI root")
 
           (diag / "integration-summary.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
           PYRUNTIME
@@ -2689,7 +2686,7 @@ jobs:
             KSU_NEXT_MANAGER_SIZE="${INPUT_MGR_SIZE}" \
             KSU_NEXT_MANAGER_HASH="${INPUT_MGR_HASH}" \
             mm/maccess.o fs/namespace.o fs/susfs.o fs/exec.o fs/stat.o fs/readdir.o fs/proc/cmdline.o fs/proc/task_mmu.o kernel/reboot.o kernel/sys.o \
-            drivers/soc/samsung/exynos-el3_mon.o drivers/kernelsu/ \
+            drivers/soc/samsung/exynos-el3_mon.o drivers/cpufreq/exynos-acme.o drivers/soc/samsung/cal-if/vclk.o drivers/block/zram/zram_drv.o drivers/usb/gadget/function/f_mtp.o drivers/kernelsu/ \
             2>&1 | tee "${DIAG_DIR}/ksu-preflight-build.log"
 
           test -s fs/susfs.o
