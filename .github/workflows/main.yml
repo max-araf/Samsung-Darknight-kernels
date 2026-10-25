@@ -735,7 +735,7 @@ jobs:
           print("Applied base kernel Clang 24 and Kconfig fixes")
           PYBASEFIX
 
-      - name: D2 & E. Apply Exynos 850 Tweaks (130MHz-2210MHz, Governors, LZ4 ZRAM, GSI MTP) + OriginSU v4.2.6 (35397) + SUSFS v2.3.0
+      - name: D2 & E. Apply Exynos 850 Tweaks (7 Governors, LZ4 ZRAM, GSI MTP) + OriginSU v4.2.6 (35397) + SUSFS v2.3.0
         env:
           INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.originsu.manager' }}
           INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x51c' }}
@@ -2505,47 +2505,9 @@ jobs:
 
 
           # -------------------------------------------------------------------
-          # 9. Exynos 850 Kernel Tweaks (CPU 130MHz-2210MHz OC/UC, ZRAM LZ4 Default,
+          # 9. Exynos 850 Kernel Tweaks (7 CPU Governors, ZRAM LZ4 Default,
           #    MTP for GSIs/AOSP/Stock/Port ROMs, and 32-bit/64-bit Dual-ABI Support)
           # -------------------------------------------------------------------
-          for dts in (ws / "arch" / "arm64" / "boot" / "dts" / "exynos").glob("exynos3830*.dts*"):
-              dtxt = dts.read_text(encoding="utf-8", errors="ignore")
-              dnew = re.sub(r"(max-freq\s*=\s*<)\d+(>;)", r"\g<1>2210000\2", dtxt)
-              dnew = re.sub(r"(min-freq\s*=\s*<)\d+(>;)", r"\g<1>130000\2", dnew)
-              if dnew != dtxt:
-                  dts.write_text(dnew, encoding="utf-8")
-                  log(f"[Tweaks] Updated CPU frequency range (130MHz - 2210MHz) in {dts.name}")
-
-          acme_c = ws / "drivers" / "cpufreq" / "exynos-acme.c"
-          if acme_c.exists():
-              atxt = acme_c.read_text(encoding="utf-8")
-              atxt = re.sub(
-                  r"(domain->max_freq\s*=\s*min\s*\([^;]+;)",
-                  r"\1\n\tdomain->max_freq = 2210000;\n\tdomain->min_freq = 130000;",
-                  atxt,
-                  count=1,
-              )
-              acme_c.write_text(atxt, encoding="utf-8")
-              log("[Tweaks] Unlocked 130MHz underclock & 2210MHz overclock in drivers/cpufreq/exynos-acme.c")
-
-          vclk_c = ws / "drivers" / "soc" / "samsung" / "cal-if" / "vclk.c"
-          if vclk_c.exists():
-              vtxt = vclk_c.read_text(encoding="utf-8")
-              vtxt = re.sub(
-                  r"(unsigned\s+long\s+cal_dfs_get_max_freq\s*\(\s*unsigned\s+int\s+id\s*\)\s*\{)",
-                  r"\1\n\tif (id == 0 || id == 1 || (id & 0xffff) <= 2) return 2210000UL;",
-                  vtxt,
-                  count=1,
-              )
-              vtxt = re.sub(
-                  r"(unsigned\s+long\s+cal_dfs_get_min_freq\s*\(\s*unsigned\s+int\s+id\s*\)\s*\{)",
-                  r"\1\n\tif (id == 0 || id == 1 || (id & 0xffff) <= 2) return 130000UL;",
-                  vtxt,
-                  count=1,
-              )
-              vclk_c.write_text(vtxt, encoding="utf-8")
-              log("[Tweaks] Unlocked cal_dfs_get_max_freq (2210MHz) & cal_dfs_get_min_freq (130MHz) in drivers/soc/samsung/cal-if/vclk.c")
-
           zram_c = ws / "drivers" / "block" / "zram" / "zram_drv.c"
           if zram_c.exists():
               ztxt = zram_c.read_text(encoding="utf-8")
@@ -2564,24 +2526,6 @@ jobs:
                   mtxt += "\n#ifdef CONFIG_USB_CONFIGFS_F_MTP\nDECLARE_USB_FUNCTION_INIT(mtp, alloc_inst_mtp_ptp, function_alloc_mtp_ptp);\n#endif\n"
                   fmtp_c.write_text(mtxt, encoding="utf-8")
                   log("[Tweaks] Added MTP for GSIs + Stock OneUI dual USB function registration in drivers/usb/gadget/function/f_mtp.c")
-
-          # 32-bit (compat) + 64-bit dual-ABI VFS sucompat hooks in fs/open.c and fs/stat.c
-          open_c = ws / "fs" / "open.c"
-          if open_c.exists():
-              otxt = open_c.read_text(encoding="utf-8")
-              if "ksu_handle_faccessat" not in otxt:
-                  odecl = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat_sucompat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n"
-                  m_fa = re.search(r"long\s+do_faccessat\s*\(\s*int\s+dfd\s*,\s*const\s+char\s+__user\s*\*filename\s*,\s*int\s+mode\s*\)\s*\{", otxt)
-                  if m_fa:
-                      otxt = otxt[:m_fa.start()] + odecl + otxt[m_fa.start():]
-                      m_fa = re.search(r"long\s+do_faccessat\s*\(\s*int\s+dfd\s*,\s*const\s+char\s+__user\s*\*filename\s*,\s*int\s+mode\s*\)\s*\{", otxt)
-                      m_if = re.search(r"\bif\s*\(", otxt[m_fa.end():])
-                      if m_if:
-                          pos = m_fa.end() + m_if.start()
-                          ohook = "#ifdef CONFIG_KSU\n\tksu_handle_faccessat_sucompat(&dfd, &filename, &mode, NULL);\n#endif\n\t"
-                          otxt = otxt[:pos] + ohook + otxt[pos:]
-                          open_c.write_text(otxt, encoding="utf-8")
-                          log("[OriginSU 32/64-bit] Wired ksu_handle_faccessat into fs/open.c do_faccessat() for 32-bit & 64-bit dual-ABI root")
 
           (diag / "integration-summary.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
           PYRUNTIME
@@ -2706,8 +2650,8 @@ jobs:
             KSU_MANAGER_PACKAGE="${INPUT_MGR_PKG}" \
             KSU_NEXT_MANAGER_SIZE="${INPUT_MGR_SIZE}" \
             KSU_NEXT_MANAGER_HASH="${INPUT_MGR_HASH}" \
-            mm/maccess.o fs/namespace.o fs/susfs.o fs/exec.o fs/open.o fs/stat.o fs/readdir.o fs/proc/cmdline.o fs/proc/task_mmu.o kernel/reboot.o kernel/sys.o \
-            drivers/soc/samsung/exynos-el3_mon.o drivers/cpufreq/exynos-acme.o drivers/soc/samsung/cal-if/vclk.o drivers/block/zram/zram_drv.o drivers/usb/gadget/function/f_mtp.o drivers/kernelsu/ \
+            mm/maccess.o fs/namespace.o fs/susfs.o fs/exec.o fs/stat.o fs/readdir.o fs/proc/cmdline.o fs/proc/task_mmu.o kernel/reboot.o kernel/sys.o \
+            drivers/soc/samsung/exynos-el3_mon.o drivers/block/zram/zram_drv.o drivers/usb/gadget/function/f_mtp.o drivers/kernelsu/ \
             2>&1 | tee "${DIAG_DIR}/ksu-preflight-build.log"
 
           test -s fs/susfs.o
@@ -2851,7 +2795,7 @@ jobs:
           ## Supports Stock ROM, Port ROM, GSI, AOSP (Android 13 - 17, 32-bit & 64-bit Dual ABI)
 
           properties() { '
-          kernel.string=Darknight 4.19.325 (OriginSU v4.2.6 35397 + SUSFS v2.3.0 + OC/UC 130-2210MHz + LZ4)
+          kernel.string=Darknight 4.19.325 (OriginSU v4.2.6 35397 + SUSFS v2.3.0 + 7-Govs + LZ4 + GSI-MTP)
           do.devicecheck=0
           do.modules=0
           do.systemless=1
