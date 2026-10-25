@@ -2570,7 +2570,7 @@ jobs:
           if open_c.exists():
               otxt = open_c.read_text(encoding="utf-8")
               if "ksu_handle_faccessat" not in otxt:
-                  odecl = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n"
+                  odecl = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat_sucompat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n"
                   m_fa = re.search(r"long\s+do_faccessat\s*\(\s*int\s+dfd\s*,\s*const\s+char\s+__user\s*\*filename\s*,\s*int\s+mode\s*\)\s*\{", otxt)
                   if m_fa:
                       otxt = otxt[:m_fa.start()] + odecl + otxt[m_fa.start():]
@@ -2578,7 +2578,7 @@ jobs:
                       m_if = re.search(r"\bif\s*\(", otxt[m_fa.end():])
                       if m_if:
                           pos = m_fa.end() + m_if.start()
-                          ohook = "#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif\n\t"
+                          ohook = "#ifdef CONFIG_KSU\n\tksu_handle_faccessat_sucompat(&dfd, &filename, &mode, NULL);\n#endif\n\t"
                           otxt = otxt[:pos] + ohook + otxt[pos:]
                           open_c.write_text(otxt, encoding="utf-8")
                           log("[OriginSU 32/64-bit] Wired ksu_handle_faccessat into fs/open.c do_faccessat() for 32-bit & 64-bit dual-ABI root")
