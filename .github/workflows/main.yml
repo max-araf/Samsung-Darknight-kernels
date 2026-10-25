@@ -1130,17 +1130,12 @@ jobs:
           assert m_app, "escape_with_root_profile not found in policy/app_profile.c"
           helper = "\n".join([
               "",
-              "#include <linux/sched/signal.h>",
-              "#include \"infra/seccomp_cache.h\"",
               "/* DARKNIGHT_MANAGER_SECCOMP_KEEP_ENABLED_FILTER */",
               "void ksu_disable_seccomp_for_manager(void)",
               "{",
               "    /* Keep Seccomp ENABLED (SECCOMP_MODE_FILTER / TIF_SECCOMP active) as requested.",
               "     * Manager communicates via pre-installed [ksu_driver] fd ioctl & prctl, which",
               "     * are permitted under Android's standard seccomp filter without disabling seccomp. */",
-              "    if (current->seccomp.filter) {",
-              "        ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);",
-              "    }",
               "}",
               "",
           ])
@@ -2138,19 +2133,19 @@ jobs:
                       "static int ksu_feat_root_gate_set(u64 value) { ksu_originsu_feat_vals[11] = value ? 1ULL : 0ULL; return 0; }",
                       "",
                       "static const struct ksu_feature_handler ksu_originsu_ext_handlers[] = {",
-                      '    { .feature_id = 5,  .name = "veil",                    .get_handler = ksu_feat_veil_get,              .set_handler = ksu_feat_veil_set },',
-                      '    { .feature_id = 6,  .name = "su_prompt",               .get_handler = ksu_feat_su_prompt_get,         .set_handler = ksu_feat_su_prompt_set },',
-                      '    { .feature_id = 7,  .name = "su_prompt_timeout",       .get_handler = ksu_feat_su_prompt_timeout_get, .set_handler = ksu_feat_su_prompt_timeout_set },',
-                      '    { .feature_id = 8,  .name = "su_prompt_default_allow", .get_handler = ksu_feat_su_prompt_def_get,     .set_handler = ksu_feat_su_prompt_def_set },',
-                      '    { .feature_id = 9,  .name = "selinux",                 .get_handler = ksu_feat_selinux_get,           .set_handler = ksu_feat_selinux_set },',
-                      '    { .feature_id = 10, .name = "shell_su_adb_only",       .get_handler = ksu_feat_shell_adb_get,         .set_handler = ksu_feat_shell_adb_set },',
-                      '    { .feature_id = 11, .name = "root_gate",               .get_handler = ksu_feat_root_gate_get,         .set_handler = ksu_feat_root_gate_set },',
+                      '    { .feature_id = KSU_FEATURE_VEIL,                    .name = "veil",                    .get_handler = ksu_feat_veil_get,              .set_handler = ksu_feat_veil_set },',
+                      '    { .feature_id = KSU_FEATURE_SU_PROMPT,               .name = "su_prompt",               .get_handler = ksu_feat_su_prompt_get,         .set_handler = ksu_feat_su_prompt_set },',
+                      '    { .feature_id = KSU_FEATURE_SU_PROMPT_TIMEOUT,       .name = "su_prompt_timeout",       .get_handler = ksu_feat_su_prompt_timeout_get, .set_handler = ksu_feat_su_prompt_timeout_set },',
+                      '    { .feature_id = KSU_FEATURE_SU_PROMPT_DEFAULT_ALLOW, .name = "su_prompt_default_allow", .get_handler = ksu_feat_su_prompt_def_get,     .set_handler = ksu_feat_su_prompt_def_set },',
+                      '    { .feature_id = KSU_FEATURE_SELINUX,                 .name = "selinux",                 .get_handler = ksu_feat_selinux_get,           .set_handler = ksu_feat_selinux_set },',
+                      '    { .feature_id = KSU_FEATURE_SHELL_SU_ADB_ONLY,       .name = "shell_su_adb_only",       .get_handler = ksu_feat_shell_adb_get,         .set_handler = ksu_feat_shell_adb_set },',
+                      '    { .feature_id = KSU_FEATURE_ROOT_GATE,               .name = "root_gate",               .get_handler = ksu_feat_root_gate_get,         .set_handler = ksu_feat_root_gate_set },',
                       "};",
                       "",
                       "static void ksu_originsu_ext_features_register(void)",
                       "{",
                       "    size_t i;",
-                      "    for (i = 0; i < ARRAY_SIZE(ksu_originsu_ext_handlers); i++) {",
+                      "    for (i = 0; i < sizeof(ksu_originsu_ext_handlers) / sizeof(ksu_originsu_ext_handlers[0]); i++) {",
                       "        (void)ksu_register_feature_handler(&ksu_originsu_ext_handlers[i]);",
                       "    }",
                       "}",
@@ -2181,6 +2176,8 @@ jobs:
               sc_compat_txt = sucompat_c.read_text(encoding="utf-8")
               if "ksu_is_shell_su_adb_only_enabled" not in sc_compat_txt:
                   adb_helper = "\n".join([
+                      "",
+                      "#include <linux/cred.h>",
                       "#include <linux/rcupdate.h>",
                       "#include <linux/sched.h>",
                       "#include <linux/string.h>",
@@ -2207,7 +2204,9 @@ jobs:
                       "}",
                       "",
                   ])
-                  sc_compat_txt = adb_helper + sc_compat_txt
+                  m_facc = re.search(r"\blong\s+ksu_handle_faccessat_sucompat\s*\(", sc_compat_txt)
+                  assert m_facc, "ksu_handle_faccessat_sucompat not found in feature/sucompat.c"
+                  sc_compat_txt = sc_compat_txt[:m_facc.start()] + adb_helper + sc_compat_txt[m_facc.start():]
                   sc_compat_txt = sc_compat_txt.replace(
                       "if (!ksu_is_allow_uid_for_current(current_uid().val))",
                       "if (!ksu_is_allow_uid_for_current(current_uid().val) || ksu_is_shell_blocked_by_adb_only())",
