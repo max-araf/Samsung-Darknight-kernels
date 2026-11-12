@@ -1,18 +1,18 @@
-name: Build SM-A135F Darknight 4.19.325 (OriginSU v4.2.6 35397 + SUSFS v2.3.0 + Tweaks)
+name: Build SM-A135F Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + Tweaks)
 
 on:
   workflow_dispatch:
     inputs:
       ksu_manager_package:
-        description: "OriginSU Manager package name"
+        description: "SukiSU-Ultra Manager package name"
         required: true
-        default: "com.originsu.manager"
+        default: "com.sukisu.ultra"
       ksu_manager_size:
-        description: "OriginSU Manager v2 signature block size (hex)"
+        description: "SukiSU-Ultra Manager v2 signature block size (hex)"
         required: true
-        default: "0x51c"
+        default: "0x35c"
       ksu_manager_hash:
-        description: "OriginSU Manager v2 certificate SHA-256"
+        description: "SukiSU-Ultra Manager v2 certificate SHA-256"
         required: true
         default: "d91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968"
   push:
@@ -38,20 +38,20 @@ env:
   EXPECTED_KERNEL_VERSION: "4.19.325"
   EXPECTED_KERNEL_RELEASE: "4.19.325-Darknight"
   NEUTRON_TAG: "06092026"
-  ORIGINSU_RELEASE_URL: "https://github.com/samakshkambxj/OriginSU/releases/tag/v4.2.6"
+  ORIGINSU_RELEASE_URL: "https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases/tag/v4.3.0-r2"
   ORIGINSU_TAG: "v4.2.6"
-  ORIGINSU_FULL_VERSION: "v4.2.6-f9d89712@OriginSU"
-  ORIGINSU_VERSION: "35397"
+  ORIGINSU_FULL_VERSION: "v4.3.0-r2-645ef98@SukiSU"
+  ORIGINSU_VERSION: "41150"
   ORIGINSU_UAPI_VERSION: "6"
   KSU_REPO: "KernelSU-Next/KernelSU-Next"
   KSUNEXT_REPO: "https://github.com/KernelSU-Next/KernelSU-Next.git"
   KSUNEXT_COMMIT: "8f902aeb16033024143ae36cf711df902cf02fae"
   EXPECTED_KSU_COMMIT: "8f902aeb16033024143ae36cf711df902cf02fae"
   KSUNEXT_TAG: "v4.2.6"
-  KSUNEXT_VERSION: "35397"
+  KSUNEXT_VERSION: "41150"
   KSU_LEGACY_SELINUX_COMPAT_REF: "d51ca52c6d370d8e9d62aabde10e41f17ff3ae94"
-  KSU_MANAGER_PACKAGE: "com.originsu.manager"
-  KSU_NEXT_MANAGER_SIZE: "0x51c"
+  KSU_MANAGER_PACKAGE: "com.sukisu.ultra"
+  KSU_NEXT_MANAGER_SIZE: "0x35c"
   KSU_NEXT_MANAGER_HASH: "d91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968"
   BRENE_REPO: "https://github.com/rrr333nnn333/BRENE.git"
   BRENE_COMMIT_PREFIX: "d721c6a"
@@ -63,7 +63,7 @@ env:
 
 jobs:
   build-sm-a135f-originsu-susfs:
-    name: Build Darknight 4.19.325 (OriginSU v4.2.6 35397 + SUSFS v2.3.0 + Tweaks)
+    name: Build Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + Tweaks)
     # CRITICAL: Neutron Clang 24 (06092026) requires GLIBC_2.36, GLIBC_2.38, and
     # GLIBC_ABI_DT_RELR, which are natively provided by Ubuntu 24.04 (glibc 2.39).
     # Ubuntu 22.04 only ships glibc 2.35 and fails to execute clang.
@@ -208,7 +208,7 @@ jobs:
           echo "${TOOLCHAIN_BIN}" >> "${GITHUB_PATH}"
           echo "CLANG_DIR=${CLANG_DIR}" >> "${GITHUB_ENV}"
 
-      - name: C & E. Fetch and audit OriginSU v4.2.6 (35397) + SUSFS v2.3.0 repositories
+      - name: C & E. Fetch and audit SukiSU-Ultra v4.3.0-r2 (41150) + SUSFS v2.3.0 repositories
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -684,7 +684,7 @@ jobs:
           ccflags-y += -DSAMSUNG_SELINUX_PORTING
           endif
           ccflags-$(CONFIG_KSU_SUSFS) += -DKSU_SUSFS
-          ccflags-y += -UKSU_VERSION -DKSU_VERSION=35397
+          ccflags-y += -UKSU_VERSION -DKSU_VERSION=41150
           ''')
           kbuild_anchor = '# Keep a new line here!! Because someone may append config'
           src = src.replace(kbuild_anchor, block + '\n' + kbuild_anchor, 1)
@@ -735,10 +735,10 @@ jobs:
           print("Applied base kernel Clang 24 and Kconfig fixes")
           PYBASEFIX
 
-      - name: D2 & E. Apply Exynos 850 Tweaks (7 Governors, LZ4 ZRAM, GSI MTP) + OriginSU v4.2.6 (35397) + SUSFS v2.3.0
+      - name: D2 & E. Apply Exynos 850 Tweaks (7 Governors, LZ4 ZRAM, GSI MTP) + SukiSU-Ultra v4.3.0-r2 (41150) + SUSFS v2.3.0
         env:
-          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.originsu.manager' }}
-          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x51c' }}
+          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
+          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
           INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'd91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968' }}
         shell: bash
         run: |
@@ -1077,7 +1077,7 @@ jobs:
           log("[Fix #5b] Added setup_ksu_cred() + track_throne(false) in runtime/boot_event.c on_post_fs_data()")
 
           # -------------------------------------------------------------------
-          # 6. Pure OriginSU v4.2.6 (35397, com.originsu.manager, 0x51c) Support:
+          # 6. Pure SukiSU-Ultra v4.3.0-r2 (41150, com.sukisu.ultra, 0x35c) Support:
           #    - 32-bit (armeabi-v7a) and 64-bit (arm64-v8a) dual support
           # -------------------------------------------------------------------
           apk_c = ksu_dir / "manager" / "apk_sign.c"
@@ -1086,14 +1086,14 @@ jobs:
           assert m_apk, "is_manager_apk(char *path) not found in manager/apk_sign.c"
           apk_fastpath = "\n".join([
               "",
-              '\tif (path && (strstr(path, "/com.originsu.manager-") || strstr(path, "/com.originsu.manager/"))) {',
-              '\t\tpr_info("OriginSU: matched manager package path %s\\n", path);',
+              '\tif (path && (strstr(path, "/com.sukisu.ultra-") || strstr(path, "/com.sukisu.ultra/"))) {',
+              '\t\tpr_info("SukiSU-Ultra: matched manager package path %s\\n", path);',
               "\t\treturn true;",
               "\t}",
           ])
           apk_txt = apk_txt[:m_apk.end()] + apk_fastpath + apk_txt[m_apk.end():]
           apk_c.write_text(apk_txt, encoding="utf-8")
-          log("[Fix #6a] Injected OriginSU v4.2.6 (com.originsu.manager) package-path fast-path in manager/apk_sign.c")
+          log("[Fix #6a] Injected SukiSU-Ultra v4.3.0-r2 (com.sukisu.ultra) package-path fast-path in manager/apk_sign.c")
 
           tt_c = ksu_dir / "manager" / "throne_tracker.c"
           tt_txt = tt_c.read_text(encoding="utf-8")
@@ -1106,8 +1106,8 @@ jobs:
               "\t{",
               "\t\tstruct uid_data *np;",
               "\t\tlist_for_each_entry(np, &uid_list, list) {",
-              '\t\t\tif (strcmp(np->package, "com.originsu.manager") == 0) {',
-              '\t\t\t\tpr_info("OriginSU: crowning %s (uid=%d) directly from packages.list\\n", np->package, np->uid);',
+              '\t\t\tif (strcmp(np->package, "com.sukisu.ultra") == 0) {',
+              '\t\t\t\tpr_info("SukiSU-Ultra: crowning %s (uid=%d) directly from packages.list\\n", np->package, np->uid);',
               f"\t\t\t\t{crown_fn}(np->uid);",
               "\t\t\t}",
               "\t\t}",
@@ -1115,7 +1115,7 @@ jobs:
           ])
           tt_txt = tt_txt.replace(tt_anchor, tt_fallback, 1)
           tt_c.write_text(tt_txt, encoding="utf-8")
-          log("[Fix #6b] Added OriginSU v4.2.6 (com.originsu.manager) crowning in manager/throne_tracker.c")
+          log("[Fix #6b] Added SukiSU-Ultra v4.3.0-r2 (com.sukisu.ultra) crowning in manager/throne_tracker.c")
 
           # -------------------------------------------------------------------
           # 7. Fix Linux 4.19 seccomp bypass & on-demand throne scan in
@@ -1130,12 +1130,16 @@ jobs:
           assert m_app, "escape_with_root_profile not found in policy/app_profile.c"
           helper = "\n".join([
               "",
+              "#include <linux/sched/signal.h>",
+              "#include \"infra/seccomp_cache.h\"",
               "/* DARKNIGHT_MANAGER_SECCOMP_KEEP_ENABLED_FILTER */",
               "void ksu_disable_seccomp_for_manager(void)",
               "{",
-              "    /* Keep Seccomp ENABLED (SECCOMP_MODE_FILTER / TIF_SECCOMP active) as requested.",
-              "     * Manager communicates via pre-installed [ksu_driver] fd ioctl & prctl, which",
-              "     * are permitted under Android's standard seccomp filter without disabling seccomp. */",
+              "    if (current->seccomp.filter) {",
+              "        ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);",
+              "        ksu_seccomp_allow_cache(current->seccomp.filter, 88);",
+              "    }",
+              "    disable_seccomp();",
               "}",
               "",
           ])
@@ -1176,7 +1180,7 @@ jobs:
               "            ksu_throne_retries--;",
               "            track_throne(false);",
               "        }",
-              '        if (!is_uid_manager(new_uid) && (strstr(current->comm, "originsu") || strstr(current->comm, "riginsu"))) {',
+              '        if (!is_uid_manager(new_uid) && (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu"))) {',
               "            ksu_set_manager_appid(new_uid % 100000);",
               "        }",
               "    }",
@@ -1233,7 +1237,7 @@ jobs:
               '#define SUSFS_VARIANT "NON-GKI"',
               "#define SUSFS_MAX_LEN_PATHNAME 256",
               "",
-              "/* SUSFS v2.3.0 NON-GKI command IDs (OriginSU / BRENE / susfs4ksu v2.3.0) */",
+              "/* SUSFS v2.3.0 NON-GKI command IDs (SukiSU-Ultra / BRENE / susfs4ksu v2.3.0) */",
               "#define CMD_SUSFS_ADD_SUS_PATH 0x55550",
               "#define CMD_SUSFS_ADD_SUS_PATH_LOOP 0x55553",
               "#define CMD_SUSFS_ADD_SUS_MOUNT 0x55560",
@@ -2056,17 +2060,17 @@ jobs:
               log("[SUSFS] Wired susfs_init() into KernelSU-Next/kernel/core/init.c")
 
           # Wire ksu_handle_sys_reboot, ksu_handle_legacy_prctl & ksu_handle_susfs_command in supercall/supercall.c
-          # Patch include/ksu.h and supercall/dispatch.c for OriginSU v4.2.6 (35397, uapi: 6, full_version, hook_type)
+          # Patch include/ksu.h and supercall/dispatch.c for SukiSU-Ultra v4.3.0-r2 (41150, uapi: 6, full_version, hook_type)
           ksu_h = ksu_dir / "include" / "ksu.h"
           if ksu_h.exists():
               kh_txt = ksu_h.read_text(encoding="utf-8")
               kh_txt = re.sub(
                   r"#define\s+KERNEL_SU_VERSION_TAG\s+.*",
-                  '#undef KERNEL_SU_VERSION\n#define KERNEL_SU_VERSION 35397\n#define KERNEL_SU_VERSION_TAG "v4.2.6-f9d89712@OriginSU"',
+                  '#undef KERNEL_SU_VERSION\n#define KERNEL_SU_VERSION 41150\n#define KERNEL_SU_VERSION_TAG "v4.3.0-r2-645ef98@SukiSU"',
                   kh_txt,
               )
               ksu_h.write_text(kh_txt, encoding="utf-8")
-              log("[OriginSU v4.2.6] Updated include/ksu.h with KERNEL_SU_VERSION=35397 and KERNEL_SU_VERSION_TAG=\"v4.2.6-f9d89712@OriginSU\"")
+              log("[SukiSU-Ultra v4.3.0-r2] Updated include/ksu.h with KERNEL_SU_VERSION=41150 and KERNEL_SU_VERSION_TAG=\"v4.3.0-r2-645ef98@SukiSU\"")
 
           uapi_sc = ksu_dir.parent / "uapi" / "supercall.h"
           if uapi_sc.exists():
@@ -2074,9 +2078,9 @@ jobs:
               utxt = re.sub(r"(#define\s+KSU_UAPI_VERSION\s+)\d+", r"\g<1>6", utxt)
               utxt = re.sub(r"(#define\s+KSU_INSTALL_MAGIC2\s+)0x[0-9a-fA-FA-F]+U?", r"\g<1>0xcafebabeU", utxt)
               uapi_sc.write_text(utxt, encoding="utf-8")
-              log("[OriginSU v4.2.6] Updated uapi/supercall.h with KSU_UAPI_VERSION=6 and KSU_INSTALL_MAGIC2=0xcafebabe")
+              log("[SukiSU-Ultra v4.3.0-r2] Updated uapi/supercall.h with KSU_UAPI_VERSION=6 and KSU_INSTALL_MAGIC2=0xcafebabe")
 
-          # Register all OriginSU v4.2.6 feature handlers (IDs 5..11) in policy/feature.c
+          # Register all SukiSU-Ultra v4.3.0-r2 feature handlers (IDs 5..11) in policy/feature.c
           uapi_feat = ksu_dir.parent / "uapi" / "feature.h"
           if uapi_feat.exists():
               uf_txt = uapi_feat.read_text(encoding="utf-8")
@@ -2088,7 +2092,7 @@ jobs:
                       1,
                   )
                   uapi_feat.write_text(uf_txt, encoding="utf-8")
-                  log("[OriginSU v4.2.6] Added enum ksu_feature_id 5..11 to uapi/feature.h")
+                  log("[SukiSU-Ultra v4.3.0-r2] Added enum ksu_feature_id 5..11 to uapi/feature.h")
 
           feat_c = ksu_dir / "policy" / "feature.c"
           if feat_c.exists():
@@ -2133,19 +2137,19 @@ jobs:
                       "static int ksu_feat_root_gate_set(u64 value) { ksu_originsu_feat_vals[11] = value ? 1ULL : 0ULL; return 0; }",
                       "",
                       "static const struct ksu_feature_handler ksu_originsu_ext_handlers[] = {",
-                      '    { .feature_id = KSU_FEATURE_VEIL,                    .name = "veil",                    .get_handler = ksu_feat_veil_get,              .set_handler = ksu_feat_veil_set },',
-                      '    { .feature_id = KSU_FEATURE_SU_PROMPT,               .name = "su_prompt",               .get_handler = ksu_feat_su_prompt_get,         .set_handler = ksu_feat_su_prompt_set },',
-                      '    { .feature_id = KSU_FEATURE_SU_PROMPT_TIMEOUT,       .name = "su_prompt_timeout",       .get_handler = ksu_feat_su_prompt_timeout_get, .set_handler = ksu_feat_su_prompt_timeout_set },',
-                      '    { .feature_id = KSU_FEATURE_SU_PROMPT_DEFAULT_ALLOW, .name = "su_prompt_default_allow", .get_handler = ksu_feat_su_prompt_def_get,     .set_handler = ksu_feat_su_prompt_def_set },',
-                      '    { .feature_id = KSU_FEATURE_SELINUX,                 .name = "selinux",                 .get_handler = ksu_feat_selinux_get,           .set_handler = ksu_feat_selinux_set },',
-                      '    { .feature_id = KSU_FEATURE_SHELL_SU_ADB_ONLY,       .name = "shell_su_adb_only",       .get_handler = ksu_feat_shell_adb_get,         .set_handler = ksu_feat_shell_adb_set },',
-                      '    { .feature_id = KSU_FEATURE_ROOT_GATE,               .name = "root_gate",               .get_handler = ksu_feat_root_gate_get,         .set_handler = ksu_feat_root_gate_set },',
+                      '    { .feature_id = 5,  .name = "veil",                    .get_handler = ksu_feat_veil_get,              .set_handler = ksu_feat_veil_set },',
+                      '    { .feature_id = 6,  .name = "su_prompt",               .get_handler = ksu_feat_su_prompt_get,         .set_handler = ksu_feat_su_prompt_set },',
+                      '    { .feature_id = 7,  .name = "su_prompt_timeout",       .get_handler = ksu_feat_su_prompt_timeout_get, .set_handler = ksu_feat_su_prompt_timeout_set },',
+                      '    { .feature_id = 8,  .name = "su_prompt_default_allow", .get_handler = ksu_feat_su_prompt_def_get,     .set_handler = ksu_feat_su_prompt_def_set },',
+                      '    { .feature_id = 9,  .name = "selinux",                 .get_handler = ksu_feat_selinux_get,           .set_handler = ksu_feat_selinux_set },',
+                      '    { .feature_id = 10, .name = "shell_su_adb_only",       .get_handler = ksu_feat_shell_adb_get,         .set_handler = ksu_feat_shell_adb_set },',
+                      '    { .feature_id = 11, .name = "root_gate",               .get_handler = ksu_feat_root_gate_get,         .set_handler = ksu_feat_root_gate_set },',
                       "};",
                       "",
                       "static void ksu_originsu_ext_features_register(void)",
                       "{",
                       "    size_t i;",
-                      "    for (i = 0; i < sizeof(ksu_originsu_ext_handlers) / sizeof(ksu_originsu_ext_handlers[0]); i++) {",
+                      "    for (i = 0; i < ARRAY_SIZE(ksu_originsu_ext_handlers); i++) {",
                       "        (void)ksu_register_feature_handler(&ksu_originsu_ext_handlers[i]);",
                       "    }",
                       "}",
@@ -2168,7 +2172,7 @@ jobs:
                       new_finit_fn,
                   )
                   feat_c.write_text(fc_txt, encoding="utf-8")
-                  log("[OriginSU v4.2.6] Registered feature handlers 5..11 (veil, su_prompt, selinux, shell_su_adb_only, root_gate) in policy/feature.c")
+                  log("[SukiSU-Ultra v4.3.0-r2] Registered feature handlers 5..11 (veil, su_prompt, selinux, shell_su_adb_only, root_gate) in policy/feature.c")
 
           # Enforce shell_su_adb_only (Feature ID 10) in feature/sucompat.c when enabled
           sucompat_c = ksu_dir / "feature" / "sucompat.c"
@@ -2176,8 +2180,6 @@ jobs:
               sc_compat_txt = sucompat_c.read_text(encoding="utf-8")
               if "ksu_is_shell_su_adb_only_enabled" not in sc_compat_txt:
                   adb_helper = "\n".join([
-                      "",
-                      "#include <linux/cred.h>",
                       "#include <linux/rcupdate.h>",
                       "#include <linux/sched.h>",
                       "#include <linux/string.h>",
@@ -2204,15 +2206,13 @@ jobs:
                       "}",
                       "",
                   ])
-                  m_facc = re.search(r"\blong\s+ksu_handle_faccessat_sucompat\s*\(", sc_compat_txt)
-                  assert m_facc, "ksu_handle_faccessat_sucompat not found in feature/sucompat.c"
-                  sc_compat_txt = sc_compat_txt[:m_facc.start()] + adb_helper + sc_compat_txt[m_facc.start():]
+                  sc_compat_txt = adb_helper + sc_compat_txt
                   sc_compat_txt = sc_compat_txt.replace(
                       "if (!ksu_is_allow_uid_for_current(current_uid().val))",
                       "if (!ksu_is_allow_uid_for_current(current_uid().val) || ksu_is_shell_blocked_by_adb_only())",
                   )
                   sucompat_c.write_text(sc_compat_txt, encoding="utf-8")
-                  log("[OriginSU v4.2.6] Wired shell_su_adb_only check in feature/sucompat.c")
+                  log("[SukiSU-Ultra v4.3.0-r2] Wired shell_su_adb_only check in feature/sucompat.c")
 
           disp_c = ksu_dir / "supercall" / "dispatch.c"
           if disp_c.exists():
@@ -2222,12 +2222,12 @@ jobs:
               dp_txt = dp_txt.replace("KSU_IOCTL_GET_HOOK_MODE", "0x80004b65").replace("KSU_IOCTL_GET_VERSION_TAG", "0x80004b64")
               dp_txt = dp_txt.replace("0x80004b62", "0x80004b65").replace("0x80004b63", "0x80004b64")
               dp_txt = dp_txt.replace('"Tracepoint"', '"Tracepoint Syscall Redirect"')
-              dp_txt = dp_txt.replace("KERNEL_SU_VERSION_TAG", '"v4.2.6-f9d89712@OriginSU"')
+              dp_txt = dp_txt.replace("KERNEL_SU_VERSION_TAG", '"v4.3.0-r2-645ef98@SukiSU"')
               m_ioctl_fn = re.search(r"\b(?:long|int)\s+ksu_supercall_handle_ioctl\s*\(([^)]*)\)\s*\{", dp_txt, re.M | re.S)
               if m_ioctl_fn:
                   ext_ioctl_intercept = "\n".join([
                       "",
-                      "    /* OriginSU v4.2.6 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
+                      "    /* SukiSU-Ultra v4.3.0-r2 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
                       "    switch (cmd) {",
                       "    case 0xc0004b17U:",
                       "    case 0x40004b17U:",
@@ -2246,7 +2246,7 @@ jobs:
                   ])
                   dp_txt = dp_txt[:m_ioctl_fn.end()] + ext_ioctl_intercept + dp_txt[m_ioctl_fn.end():]
               disp_c.write_text(dp_txt, encoding="utf-8")
-              log("[OriginSU v4.2.6] Updated supercall/dispatch.c with uapi_version=6, features=12, GET_FULL_VERSION (0x80004b64), GET_HOOK_TYPE (0x80004b65), and extended ioctls (0x4b17..0x4b1a, 0x4b66..0x4b6a)")
+              log("[SukiSU-Ultra v4.3.0-r2] Updated supercall/dispatch.c with uapi_version=6, features=12, GET_FULL_VERSION (0x80004b64), GET_HOOK_TYPE (0x80004b65), and extended ioctls (0x4b17..0x4b1a, 0x4b66..0x4b6a)")
 
           sc_c = ksu_dir / "supercall" / "supercall.c"
           sc_txt = sc_c.read_text(encoding="utf-8")
@@ -2255,9 +2255,9 @@ jobs:
                   sc_txt = inc + "\n" + sc_txt
           dual_ver_Override = "\n".join([
               "",
-              "/* DARKNIGHT_ORIGINSU_V4_2_6_DRIVER_DISPATCH (OriginSU 35397, uapi 6) */",
+              "/* DARKNIGHT_ORIGINSU_V4_2_6_DRIVER_DISPATCH (SukiSU-Ultra 41150, uapi 6) */",
               "#undef KSU_VERSION",
-              "#define KSU_VERSION 35397U",
+              "#define KSU_VERSION 41150U",
               "#undef KSU_INSTALL_MAGIC2",
               "#define KSU_INSTALL_MAGIC2 0xcafebabeU",
               "",
@@ -2413,12 +2413,12 @@ jobs:
               "{",
               "    uid_t uid = current_uid().val;",
               "",
-              "    /* 1. PR_SET_NAME (15): detect com.originsu.manager process specialization immediately */",
+              "    /* 1. PR_SET_NAME (15): detect com.sukisu.ultra process specialization immediately */",
               "    if (option == 15 && uid >= 10000 && arg2 != 0UL) {",
               "        char kname[16];",
               "        memset(kname, 0, sizeof(kname));",
               "        if (strncpy_from_user(kname, (const char __user *)arg2, sizeof(kname) - 1) > 0) {",
-              '            if (strstr(kname, "originsu") || strstr(kname, "riginsu")) {',
+              '            if (strstr(kname, "sukisu") || strstr(kname, "ukisu")) {',
               "                if (ksu_file_sid == 0) {",
               "                    apply_kernelsu_rules();",
               "                    cache_sid();",
@@ -2437,7 +2437,7 @@ jobs:
               "",
               "    /* 2. PR_GET_SECCOMP (21): ensure seccomp is disabled & fd installed when Manager queries status */",
               "    if (option == 21 && uid >= 10000) {",
-              '        if (!is_uid_manager(uid) && (strstr(current->comm, "originsu") || strstr(current->comm, "riginsu"))) {',
+              '        if (!is_uid_manager(uid) && (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu"))) {',
               "            if (ksu_file_sid == 0) {",
               "                apply_kernelsu_rules();",
               "                cache_sid();",
@@ -2471,7 +2471,7 @@ jobs:
               "",
               "    if (!is_uid_manager(uid) && uid >= 10000) {",
               "        track_throne(false);",
-              '        if (!is_uid_manager(uid) && (strstr(current->comm, "originsu") || strstr(current->comm, "riginsu"))) {',
+              '        if (!is_uid_manager(uid) && (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu"))) {',
               '            pr_info("KernelSU: crowning manager uid=%u from 0xdeadbeef prctl (%s)\\n", uid, current->comm);',
               "            ksu_set_manager_appid(uid % 100000);",
               "        }",
@@ -2519,7 +2519,7 @@ jobs:
               "    if ((unsigned int)magic2 == KSU_INSTALL_MAGIC2 || (unsigned int)magic2 == 0xdead2022U || (unsigned int)magic2 == 6969U) {\n        magic2 = (int)KSU_INSTALL_MAGIC2;",
               "        if (unlikely(!is_uid_manager(current_uid().val) && current_uid().val >= 10000)) {",
               "            track_throne(false);",
-              '            if (!is_uid_manager(current_uid().val) && (strstr(current->comm, "originsu") || strstr(current->comm, "riginsu"))) {',
+              '            if (!is_uid_manager(current_uid().val) && (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu"))) {',
               "                ksu_set_manager_appid(current_uid().val % 100000);",
               "            }",
               "        }",
@@ -2547,7 +2547,7 @@ jobs:
               cmd_var = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", params[1])[-1] if len(params) >= 2 else "cmd"
               anon_intercept = "\n".join([
                   "",
-                  "    /* OriginSU v4.2.6 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
+                  "    /* SukiSU-Ultra v4.3.0-r2 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
                   f"    switch ((unsigned int){cmd_var}) {{",
                   "    case 0xc0004b17U:",
                   "    case 0x40004b17U:",
@@ -2565,7 +2565,7 @@ jobs:
                   "    }",
               ])
               sc_txt = sc_txt[:m_anon_ioctl.end()] + anon_intercept + sc_txt[m_anon_ioctl.end():]
-              log("[OriginSU v4.2.6] Hooked anon_ksu_ioctl in supercall/supercall.c for extended OriginSU ioctls")
+              log("[SukiSU-Ultra v4.3.0-r2] Hooked anon_ksu_ioctl in supercall/supercall.c for extended SukiSU-Ultra ioctls")
           sc_txt += "\n" + reboot_bridge
           sc_c.write_text(sc_txt, encoding="utf-8")
           log("[Fix #8a] Added full SUSFS v2.3.0 NON-GKI / v1.5.5 dual-protocol and ksu_handle_sys_reboot to supercall/supercall.c")
@@ -2704,10 +2704,10 @@ jobs:
           git diff > "${DIAG_DIR}/patches/kernel-tree-integration.diff"
           git -C KernelSU-Next diff > "${DIAG_DIR}/patches/ksunext-integration.diff"
 
-      - name: F1. Configure kernel (.config) with Exynos 850 Tweaks and run OriginSU v4.2.6 (35397) + SUSFS v2.3.0 preflight compilation
+      - name: F1. Configure kernel (.config) with Exynos 850 Tweaks and run SukiSU-Ultra v4.3.0-r2 (41150) + SUSFS v2.3.0 preflight compilation
         env:
-          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.originsu.manager' }}
-          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x51c' }}
+          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
+          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
           INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'd91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968' }}
         shell: bash
         run: |
@@ -2778,6 +2778,8 @@ jobs:
             --enable HAVE_SYSCALL_TRACEPOINTS \
             --enable KALLSYMS \
             --enable KALLSYMS_ALL \
+            --enable KPM \
+            --disable EXYNOS_EHLD \
             --enable SECURITY_SELINUX \
             --enable SECURITY_SELINUX_DEVELOP \
             --disable SECURITY_SELINUX_ALWAYS_PERMISSIVE \
@@ -2833,8 +2835,8 @@ jobs:
 
       - name: F2. Build full arm64 Image and vmlinux and verify symbols/disassembly
         env:
-          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.originsu.manager' }}
-          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x51c' }}
+          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
+          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
           INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'd91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968' }}
         shell: bash
         run: |
@@ -2930,14 +2932,29 @@ jobs:
           grep -q "memcpy" "${DIAG_DIR}/patch-text-cb-disasm.txt"
           ! grep -q "copy_to_kernel_nofault" "${DIAG_DIR}/patch-text-cb-disasm.txt"
 
+          # Patch built Image with SukiSU-Ultra KPM (KernelPatch Module) loader (patch_linux -> oImage)
+          cd "${GITHUB_WORKSPACE}/arch/arm64/boot"
+          if curl -fsSL --retry 3 "https://github.com/SukiSU-Ultra/SukiSU_patch/raw/main/kpm/patch_linux" -o patch_linux || \
+             curl -fsSL --retry 3 "https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/latest/download/patch_linux" -o patch_linux; then
+            chmod +x patch_linux
+            if ./patch_linux && [ -s oImage ]; then
+              mv -f oImage Image
+              echo "[SukiSU-Ultra KPM] Patched arch/arm64/boot/Image with KPM support (oImage -> Image)"
+            else
+              echo "WARNING: patch_linux execution did not produce oImage; keeping original Image"
+            fi
+            rm -f patch_linux
+          fi
+          cd "${GITHUB_WORKSPACE}"
+
           BUILT_IMAGE_SHA256="$(sha256sum "${IMAGE_PATH}" | awk '{print $1}')"
           echo "${BUILT_IMAGE_SHA256}  arch/arm64/boot/Image" | tee "${DIAG_DIR}/built-image.sha256"
           echo "BUILT_IMAGE_SHA256=${BUILT_IMAGE_SHA256}" >> "${GITHUB_ENV}"
 
-      - name: G. Package OriginSU-style AnyKernel3 installer and validate scripts/hashes
+      - name: G. Package SukiSU-Ultra-style AnyKernel3 installer and validate scripts/hashes
         env:
-          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.originsu.manager' }}
-          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x51c' }}
+          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
+          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
           INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'd91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968' }}
         shell: bash
         run: |
@@ -2950,28 +2967,22 @@ jobs:
 
           cp -f "${GITHUB_WORKSPACE}/arch/arm64/boot/Image" "${AK3_DIR}/Image"
 
-          # Bundle OriginSU v4.2.6 (35397) 64-bit (arm64-v8a) & 32-bit (armeabi-v7a) daemons into AnyKernel3
-          ORIGINSU_APK="${RUNNER_TEMP}/OriginSU-universal.apk"
-          if curl -fsSL --retry 3 "https://github.com/samakshkambxj/OriginSU/releases/download/v4.2.6/OriginSU_v4.2.6_35397-universal-release.apk" -o "${ORIGINSU_APK}" || \
-             curl -fsSL --retry 3 "https://github.com/samakshkambxj/OriginSU/releases/download/v4.2.6/OriginSU_v4.2.6_35397-arm64-v8a-release.apk" -o "${ORIGINSU_APK}"; then
-            unzip -p "${ORIGINSU_APK}" lib/arm64-v8a/libksud.so > "${AK3_DIR}/ksud"
-            unzip -p "${ORIGINSU_APK}" lib/arm64-v8a/libadbroot.so > "${AK3_DIR}/libadbroot.so"
-            unzip -p "${ORIGINSU_APK}" lib/armeabi-v7a/libksud.so > "${AK3_DIR}/ksud32" 2>/dev/null || true
-            mkdir -p "${AK3_DIR}/originzygisk"
-            unzip -p "${ORIGINSU_APK}" assets/originzygisk/payload.zip > "${AK3_DIR}/originzygisk/payload.zip" 2>/dev/null || true
-            unzip -p "${ORIGINSU_APK}" assets/originzygisk/setup.sh > "${AK3_DIR}/originzygisk/setup.sh" 2>/dev/null || true
-            unzip -p "${ORIGINSU_APK}" assets/originzygisk/launch.sh > "${AK3_DIR}/originzygisk/launch.sh" 2>/dev/null || true
-            chmod 0755 "${AK3_DIR}/ksud" "${AK3_DIR}/libadbroot.so"
-            [ -f "${AK3_DIR}/ksud32" ] && chmod 0755 "${AK3_DIR}/ksud32"
+          # Bundle SukiSU-Ultra v4.3.0-r2 (41150) 64-bit (arm64-v8a) & 32-bit (armeabi-v7a) daemons into AnyKernel3
+          # Download official SukiSU-Ultra v4.3.0-r2 (41150) 64-bit & 32-bit ksud daemons
+          if curl -fsSL --retry 3 "https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases/download/v4.3.0-r2/ksud-aarch64-linux-android" -o "${AK3_DIR}/ksud"; then
+            chmod 0755 "${AK3_DIR}/ksud"
+          fi
+          if curl -fsSL --retry 3 "https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases/download/v4.3.0-r2/ksud-armv7-linux-androideabi" -o "${AK3_DIR}/ksud32"; then
+            chmod 0755 "${AK3_DIR}/ksud32"
           fi
 
           cat << 'EOF' > "${AK3_DIR}/anykernel.sh"
           ### AnyKernel3 Ramdisk Mod Script
-          ## Darknight 4.19.325 (OriginSU v4.2.6 35397 + SUSFS v2.3.0 + Tweaks) for Galaxy A13 4G (SM-A135F/M)
+          ## Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + Tweaks) for Galaxy A13 4G (SM-A135F/M)
           ## Supports Stock ROM, Port ROM, GSI, AOSP (Android 13 - 17, 32-bit & 64-bit Dual ABI)
 
           properties() { '
-          kernel.string=Darknight 4.19.325 (OriginSU v4.2.6 35397 + SUSFS v2.3.0 + 7-Govs + LZ4 + GSI-MTP)
+          kernel.string=Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + 7-Govs + LZ4 + GSI-MTP)
           do.devicecheck=0
           do.modules=0
           do.systemless=1
@@ -3009,7 +3020,7 @@ jobs:
             fi
           done
 
-          # Install OriginSU v4.2.6 (35397) 64-bit & 32-bit daemons to /data/adb/ksud
+          # Install SukiSU-Ultra v4.3.0-r2 (41150) 64-bit & 32-bit daemons to /data/adb/ksud
           mount /data 2>/dev/null || true
           if [ -d /data ] && [ -w /data ]; then
             mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/ksu/log /data/adb/modules
@@ -3018,11 +3029,11 @@ jobs:
             if [ -f "$home/ksud" ]; then
               cp -f "$home/ksud" /data/adb/ksud
               cp -f "$home/ksud" /data/adb/ksu/bin/ksud
-              ui_print "Installed OriginSU v4.2.6 (35397) 64-bit daemon -> /data/adb/ksud"
+              ui_print "Installed SukiSU-Ultra v4.3.0-r2 (41150) 64-bit daemon -> /data/adb/ksud"
             fi
             if [ -f "$home/ksud32" ]; then
               cp -f "$home/ksud32" /data/adb/ksu/bin/ksud32
-              ui_print "Installed OriginSU v4.2.6 (35397) 32-bit daemon -> /data/adb/ksu/bin/ksud32"
+              ui_print "Installed SukiSU-Ultra v4.3.0-r2 (41150) 32-bit daemon -> /data/adb/ksu/bin/ksud32"
             fi
             chown 0:0 /data/adb/ksud /data/adb/ksu/bin/ksud* 2>/dev/null || true
             chmod 0755 /data/adb/ksud /data/adb/ksu/bin/ksud* 2>/dev/null || true
@@ -3078,8 +3089,8 @@ jobs:
               "ksunext_commit": os.environ["KSUNEXT_COMMIT"],
               "ksunext_tag": os.environ["KSUNEXT_TAG"],
               "ksunext_driver_version": int(os.environ["KSUNEXT_VERSION"]),
-              "originsu_release_url": os.environ.get("ORIGINSU_RELEASE_URL", "https://github.com/samakshkambxj/OriginSU/releases/tag/v4.2.6"),
-              "originsu_full_version": os.environ.get("ORIGINSU_FULL_VERSION", "v4.2.6-f9d89712@OriginSU"),
+              "originsu_release_url": os.environ.get("ORIGINSU_RELEASE_URL", "https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases/tag/v4.3.0-r2"),
+              "originsu_full_version": os.environ.get("ORIGINSU_FULL_VERSION", "v4.3.0-r2-645ef98@SukiSU"),
               "originsu_uapi_version": int(os.environ.get("ORIGINSU_UAPI_VERSION", "6")),
               "ksu_manager_package": os.environ["INPUT_MGR_PKG"],
               "ksu_manager_cert_size": os.environ["INPUT_MGR_SIZE"],
@@ -3104,7 +3115,7 @@ jobs:
 
           cd "${AK3_DIR}"
           sha256sum Image anykernel.sh build-metadata.json ROLLBACK.md > SHA256SUMS.txt
-          ZIP_NAME="A13X-Darknight-OriginSU-v4.2.6-35397-SUSFS-Tweaks-AnyKernel3.zip"
+          ZIP_NAME="A13X-Darknight-SukiSU-Ultra-v4.2.6-41150-SUSFS-Tweaks-AnyKernel3.zip"
           ZIP_PATH="${GITHUB_WORKSPACE}/${ZIP_NAME}"
           rm -f "${ZIP_PATH}"
           zip -r9 "${ZIP_PATH}" . -x '*/.git/*' '*/README*' '*placeholder'
@@ -3130,7 +3141,7 @@ jobs:
       - name: H1. Upload Flashable AnyKernel3 Installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: A13X-Darknight-OriginSU-v4.2.6-35397-SUSFS-Tweaks-AnyKernel3
+          name: A13X-Darknight-SukiSU-Ultra-v4.2.6-41150-SUSFS-Tweaks-AnyKernel3
           path: ${{ github.workspace }}/${{ env.ZIP_NAME }}
           if-no-files-found: error
 
