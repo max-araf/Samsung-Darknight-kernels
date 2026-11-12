@@ -39,7 +39,7 @@ env:
   EXPECTED_KERNEL_RELEASE: "4.19.325-Darknight"
   NEUTRON_TAG: "06092026"
   ORIGINSU_RELEASE_URL: "https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases/tag/v4.3.0-r2"
-  ORIGINSU_TAG: "v4.2.6"
+  ORIGINSU_TAG: "v4.3.0-r2"
   ORIGINSU_FULL_VERSION: "v4.3.0-r2-645ef98@SukiSU"
   ORIGINSU_VERSION: "41150"
   ORIGINSU_UAPI_VERSION: "6"
@@ -47,7 +47,7 @@ env:
   KSUNEXT_REPO: "https://github.com/KernelSU-Next/KernelSU-Next.git"
   KSUNEXT_COMMIT: "8f902aeb16033024143ae36cf711df902cf02fae"
   EXPECTED_KSU_COMMIT: "8f902aeb16033024143ae36cf711df902cf02fae"
-  KSUNEXT_TAG: "v4.2.6"
+  KSUNEXT_TAG: "v4.3.0-r2"
   KSUNEXT_VERSION: "41150"
   KSU_LEGACY_SELINUX_COMPAT_REF: "d51ca52c6d370d8e9d62aabde10e41f17ff3ae94"
   KSU_MANAGER_PACKAGE: "com.sukisu.ultra"
@@ -2180,6 +2180,7 @@ jobs:
               sc_compat_txt = sucompat_c.read_text(encoding="utf-8")
               if "ksu_is_shell_su_adb_only_enabled" not in sc_compat_txt:
                   adb_helper = "\n".join([
+                      "#include <linux/cred.h>",
                       "#include <linux/rcupdate.h>",
                       "#include <linux/sched.h>",
                       "#include <linux/string.h>",
@@ -3026,14 +3027,22 @@ jobs:
             mkdir -p /data/adb/ksu/bin /data/adb/ksu/lib /data/adb/ksu/log /data/adb/modules
             chmod 0700 /data/adb
             rm -f /data/adb/ksu/bin/ksud_official /data/adb/ksu/bin/ksud_next
-            if [ -f "$home/ksud" ]; then
-              cp -f "$home/ksud" /data/adb/ksud
-              cp -f "$home/ksud" /data/adb/ksu/bin/ksud
-              ui_print "Installed SukiSU-Ultra v4.3.0-r2 (41150) 64-bit daemon -> /data/adb/ksud"
-            fi
-            if [ -f "$home/ksud32" ]; then
-              cp -f "$home/ksud32" /data/adb/ksu/bin/ksud32
-              ui_print "Installed SukiSU-Ultra v4.3.0-r2 (41150) 32-bit daemon -> /data/adb/ksu/bin/ksud32"
+            if [ -e /system/bin/linker64 ] || [ -e /system_root/system/bin/linker64 ]; then
+              if [ -f "$home/ksud" ]; then
+                cp -f "$home/ksud" /data/adb/ksud
+                cp -f "$home/ksud" /data/adb/ksu/bin/ksud
+                ui_print "Installed SukiSU-Ultra v4.3.0-r2 (41150) 64-bit daemon -> /data/adb/ksud"
+              fi
+              if [ -f "$home/ksud32" ]; then
+                cp -f "$home/ksud32" /data/adb/ksu/bin/ksud32
+              fi
+            else
+              if [ -f "$home/ksud32" ]; then
+                cp -f "$home/ksud32" /data/adb/ksud
+                cp -f "$home/ksud32" /data/adb/ksu/bin/ksud
+                cp -f "$home/ksud32" /data/adb/ksu/bin/ksud32
+                ui_print "Detected 32-bit Stock ROM: Installed SukiSU-Ultra v4.3.0-r2 (41150) 32-bit daemon -> /data/adb/ksud"
+              fi
             fi
             chown 0:0 /data/adb/ksud /data/adb/ksu/bin/ksud* 2>/dev/null || true
             chmod 0755 /data/adb/ksud /data/adb/ksu/bin/ksud* 2>/dev/null || true
@@ -3115,7 +3124,7 @@ jobs:
 
           cd "${AK3_DIR}"
           sha256sum Image anykernel.sh build-metadata.json ROLLBACK.md > SHA256SUMS.txt
-          ZIP_NAME="A13X-Darknight-SukiSU-Ultra-v4.2.6-41150-SUSFS-Tweaks-AnyKernel3.zip"
+          ZIP_NAME="A13X-Darknight-SukiSU-Ultra-v4.3.0-r2-41150-SUSFS-Tweaks-AnyKernel3.zip"
           ZIP_PATH="${GITHUB_WORKSPACE}/${ZIP_NAME}"
           rm -f "${ZIP_PATH}"
           zip -r9 "${ZIP_PATH}" . -x '*/.git/*' '*/README*' '*placeholder'
@@ -3141,7 +3150,7 @@ jobs:
       - name: H1. Upload Flashable AnyKernel3 Installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: A13X-Darknight-SukiSU-Ultra-v4.2.6-41150-SUSFS-Tweaks-AnyKernel3
+          name: A13X-Darknight-SukiSU-Ultra-v4.3.0-r2-41150-SUSFS-Tweaks-AnyKernel3
           path: ${{ github.workspace }}/${{ env.ZIP_NAME }}
           if-no-files-found: error
 
