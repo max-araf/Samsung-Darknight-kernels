@@ -1,4 +1,4 @@
-name: Build SM-A135F Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + Tweaks)
+name: Build SM-A135F Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + KPM)
 
 on:
   workflow_dispatch:
@@ -63,7 +63,7 @@ env:
 
 jobs:
   build-sm-a135f-originsu-susfs:
-    name: Build Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + Tweaks)
+    name: Build Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + KPM)
     # CRITICAL: Neutron Clang 24 (06092026) requires GLIBC_2.36, GLIBC_2.38, and
     # GLIBC_ABI_DT_RELR, which are natively provided by Ubuntu 24.04 (glibc 2.39).
     # Ubuntu 22.04 only ships glibc 2.35 and fails to execute clang.
@@ -735,7 +735,7 @@ jobs:
           print("Applied base kernel Clang 24 and Kconfig fixes")
           PYBASEFIX
 
-      - name: D2 & E. Apply Exynos 850 Tweaks (7 Governors, LZ4 ZRAM, GSI MTP) + SukiSU-Ultra v4.3.0-r2 (41150) + SUSFS v2.3.0
+      - name: D2 & E. Apply Clean SukiSU-Ultra v4.3.0-r2 (41150) + SUSFS v2.3.0
         env:
           INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
           INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
@@ -1126,24 +1126,64 @@ jobs:
           setuid_c = ksu_dir / "hook" / "setuid_hook.c"
 
           app_src = app_c.read_text(encoding="utf-8")
+          # Keep Seccomp status = Filter (SECCOMP_MODE_FILTER) and never NULL/free shared seccomp.filter on fork
+          app_src = replace_c_function(
+              app_src,
+              r"(?:static\s+)?void\s+disable_seccomp\s*\(\s*void\s*\)\s*\{",
+              "static void disable_seccomp(void)\n{\n    /* Seccomp remains Filter (SECCOMP_MODE_FILTER); allowed via __seccomp_filter hook */\n}",
+          )
           m_app = re.search(r"\bint\s+escape_with_root_profile\s*\(\s*void\s*\)", app_src)
           assert m_app, "escape_with_root_profile not found in policy/app_profile.c"
           helper = "\n".join([
               "",
               "#include <linux/sched/signal.h>",
-              "#include \"infra/seccomp_cache.h\"",
-              "/* DARKNIGHT_MANAGER_SECCOMP_KEEP_ENABLED_FILTER */",
+              "#include <linux/seccomp.h>",
+              "#include \"manager/manager_identity.h\"",
+              "#include \"policy/allowlist.h\"",
+              "/* Keep Seccomp status = Filter while allowing root syscalls & manager supercalls in __seccomp_filter */",
+              "bool ksu_seccomp_allow_syscall(int nr)",
+              "{",
+              "    uid_t uid = current_uid().val;",
+              "    if (unlikely(uid == 0))",
+              "        return true;",
+              "    if (unlikely(nr == __NR_reboot || nr == 142 || nr == 88 || nr == 116)) {",
+              "        if (is_uid_manager(uid) || ksu_is_allow_uid_for_current(uid))",
+              "            return true;",
+              '        if (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu") || strstr(current->comm, "ksud"))',
+              "            return true;",
+              "    }",
+              "    return false;",
+              "}",
+              "",
               "void ksu_disable_seccomp_for_manager(void)",
               "{",
-              "    if (current->seccomp.filter) {",
-              "        ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);",
-              "        ksu_seccomp_allow_cache(current->seccomp.filter, 88);",
-              "    }",
-              "    disable_seccomp();",
+              "    /* Seccomp mode remains SECCOMP_MODE_FILTER (2) so Manager shows Seccomp: Filter */",
               "}",
               "",
           ])
           app_c.write_text(app_src[:m_app.start()] + helper + app_src[m_app.start():], encoding="utf-8")
+
+          seccomp_k_c = ws / "kernel" / "seccomp.c"
+          if seccomp_k_c.exists():
+              sk_txt = seccomp_k_c.read_text(encoding="utf-8")
+              if "ksu_seccomp_allow_syscall" not in sk_txt:
+                  m_sf = re.search(r"static\s+int\s+__seccomp_filter\s*\([^)]*\)\s*\{", sk_txt)
+                  assert m_sf, "__seccomp_filter not found in kernel/seccomp.c"
+                  sk_decl = "\n#ifdef CONFIG_KSU\nextern bool ksu_seccomp_allow_syscall(int nr);\n#endif\n"
+                  sk_txt = sk_txt[:m_sf.start()] + sk_decl + sk_txt[m_sf.start():]
+                  m_sf = re.search(r"static\s+int\s+__seccomp_filter\s*\([^)]*\)\s*\{", sk_txt)
+                  m_stmt = re.search(r"\b(?:if|switch|this_syscall)\b", sk_txt[m_sf.end():])
+                  assert m_stmt, "First statement not found in __seccomp_filter"
+                  pos_sf = m_sf.end() + m_stmt.start()
+                  sf_hook = (
+                      "#ifdef CONFIG_KSU\n"
+                      "\tif (unlikely(ksu_seccomp_allow_syscall(this_syscall)))\n"
+                      "\t\treturn 0;\n"
+                      "#endif\n\t"
+                  )
+                  sk_txt = sk_txt[:pos_sf] + sf_hook + sk_txt[pos_sf:]
+                  seccomp_k_c.write_text(sk_txt, encoding="utf-8")
+                  log("[Fix #7a] Hooked __seccomp_filter in kernel/seccomp.c (Seccomp stays Filter, root & manager syscalls allowed)")
 
           h_src = app_h.read_text(encoding="utf-8")
           m_h = re.search(r"\bint\s+escape_with_root_profile\s*\(\s*void\s*\)\s*;", h_src)
@@ -2080,7 +2120,7 @@ jobs:
               uapi_sc.write_text(utxt, encoding="utf-8")
               log("[SukiSU-Ultra v4.3.0-r2] Updated uapi/supercall.h with KSU_UAPI_VERSION=6 and KSU_INSTALL_MAGIC2=0xcafebabe")
 
-          # Register all SukiSU-Ultra v4.3.0-r2 feature handlers (IDs 5..11) in policy/feature.c
+          # Register all SukiSU-Ultra v4.3.0-r2 feature handlers (IDs 5..17, including 6=shell_su_adb_only and 16=mount_hide) in policy/feature.c
           uapi_feat = ksu_dir.parent / "uapi" / "feature.h"
           if uapi_feat.exists():
               uf_txt = uapi_feat.read_text(encoding="utf-8")
@@ -2088,11 +2128,11 @@ jobs:
                   assert "KSU_FEATURE_MAX" in uf_txt, "KSU_FEATURE_MAX not found in uapi/feature.h"
                   uf_txt = uf_txt.replace(
                       "KSU_FEATURE_MAX",
-                      "KSU_FEATURE_VEIL = 5,\n    KSU_FEATURE_SU_PROMPT = 6,\n    KSU_FEATURE_SU_PROMPT_TIMEOUT = 7,\n    KSU_FEATURE_SU_PROMPT_DEFAULT_ALLOW = 8,\n    KSU_FEATURE_SELINUX = 9,\n    KSU_FEATURE_SHELL_SU_ADB_ONLY = 10,\n    KSU_FEATURE_ROOT_GATE = 11,\n    KSU_FEATURE_ORIGINSU_PAD = 10004,\n    KSU_FEATURE_MAX",
+                      "KSU_FEATURE_VEIL = 5,\n    KSU_FEATURE_SHELL_SU_ADB_ONLY = 6,\n    KSU_FEATURE_SU_PROMPT_TIMEOUT = 7,\n    KSU_FEATURE_SU_PROMPT_DEFAULT_ALLOW = 8,\n    KSU_FEATURE_SELINUX = 9,\n    KSU_FEATURE_SHELL_SU_ADB_ONLY_LEGACY = 10,\n    KSU_FEATURE_ROOT_GATE = 11,\n    KSU_FEATURE_MOUNT_HIDE = 16,\n    KSU_FEATURE_AVC_SPOOF_V2 = 17,\n    KSU_FEATURE_ORIGINSU_PAD = 10004,\n    KSU_FEATURE_MAX",
                       1,
                   )
                   uapi_feat.write_text(uf_txt, encoding="utf-8")
-                  log("[SukiSU-Ultra v4.3.0-r2] Added enum ksu_feature_id 5..11 to uapi/feature.h")
+                  log("[SukiSU-Ultra v4.3.0-r2] Added enum ksu_feature_id 5..17 (shell_su_adb_only=6, mount_hide=16, avc_spoof=17) to uapi/feature.h")
 
           feat_c = ksu_dir / "policy" / "feature.c"
           if feat_c.exists():
@@ -2103,19 +2143,23 @@ jobs:
                       'extern bool getenforce(void);',
                       'extern void setenforce(bool enforce);',
                       "",
-                      "static u64 ksu_originsu_feat_vals[16] = {",
-                      "    [7] = 15ULL, /* su_prompt_timeout default 15s */",
+                      "static u64 ksu_originsu_feat_vals[32] = {",
+                      "    [6]  = 0ULL,  /* shell_su_adb_only default off (supported) */",
+                      "    [7]  = 15ULL, /* su_prompt_timeout default 15s */",
+                      "    [10] = 0ULL,  /* shell_su_adb_only legacy alias */",
+                      "    [16] = 1ULL,  /* mount_hide default enabled */",
+                      "    [17] = 1ULL,  /* avc_spoof default enabled */",
                       "};",
                       "",
                       "bool ksu_is_shell_su_adb_only_enabled(void)",
                       "{",
-                      "    return ksu_originsu_feat_vals[10] != 0;",
+                      "    return (ksu_originsu_feat_vals[6] != 0) || (ksu_originsu_feat_vals[10] != 0);",
                       "}",
                       "",
                       "static int ksu_feat_veil_get(u64 *value) { *value = ksu_originsu_feat_vals[5]; return 0; }",
                       "static int ksu_feat_veil_set(u64 value) { ksu_originsu_feat_vals[5] = value ? 1ULL : 0ULL; return 0; }",
-                      "static int ksu_feat_su_prompt_get(u64 *value) { *value = ksu_originsu_feat_vals[6]; return 0; }",
-                      "static int ksu_feat_su_prompt_set(u64 value) { ksu_originsu_feat_vals[6] = value ? 1ULL : 0ULL; return 0; }",
+                      "static int ksu_feat_shell_adb_get(u64 *value) { *value = ksu_originsu_feat_vals[6]; return 0; }",
+                      "static int ksu_feat_shell_adb_set(u64 value) { ksu_originsu_feat_vals[6] = value ? 1ULL : 0ULL; ksu_originsu_feat_vals[10] = ksu_originsu_feat_vals[6]; return 0; }",
                       "static int ksu_feat_su_prompt_timeout_get(u64 *value) { *value = ksu_originsu_feat_vals[7]; return 0; }",
                       "static int ksu_feat_su_prompt_timeout_set(u64 value) { ksu_originsu_feat_vals[7] = value; return 0; }",
                       "static int ksu_feat_su_prompt_def_get(u64 *value) { *value = ksu_originsu_feat_vals[8]; return 0; }",
@@ -2131,19 +2175,23 @@ jobs:
                       "    setenforce(value == 0);",
                       "    return 0;",
                       "}",
-                      "static int ksu_feat_shell_adb_get(u64 *value) { *value = ksu_originsu_feat_vals[10]; return 0; }",
-                      "static int ksu_feat_shell_adb_set(u64 value) { ksu_originsu_feat_vals[10] = value ? 1ULL : 0ULL; return 0; }",
                       "static int ksu_feat_root_gate_get(u64 *value) { *value = ksu_originsu_feat_vals[11]; return 0; }",
                       "static int ksu_feat_root_gate_set(u64 value) { ksu_originsu_feat_vals[11] = value ? 1ULL : 0ULL; return 0; }",
+                      "static int ksu_feat_mount_hide_get(u64 *value) { *value = ksu_originsu_feat_vals[16]; return 0; }",
+                      "static int ksu_feat_mount_hide_set(u64 value) { ksu_originsu_feat_vals[16] = value ? 1ULL : 0ULL; return 0; }",
+                      "static int ksu_feat_avc_spoof_v2_get(u64 *value) { *value = ksu_originsu_feat_vals[17]; return 0; }",
+                      "static int ksu_feat_avc_spoof_v2_set(u64 value) { ksu_originsu_feat_vals[17] = value ? 1ULL : 0ULL; return 0; }",
                       "",
                       "static const struct ksu_feature_handler ksu_originsu_ext_handlers[] = {",
                       '    { .feature_id = 5,  .name = "veil",                    .get_handler = ksu_feat_veil_get,              .set_handler = ksu_feat_veil_set },',
-                      '    { .feature_id = 6,  .name = "su_prompt",               .get_handler = ksu_feat_su_prompt_get,         .set_handler = ksu_feat_su_prompt_set },',
+                      '    { .feature_id = 6,  .name = "shell_su_adb_only",       .get_handler = ksu_feat_shell_adb_get,         .set_handler = ksu_feat_shell_adb_set },',
                       '    { .feature_id = 7,  .name = "su_prompt_timeout",       .get_handler = ksu_feat_su_prompt_timeout_get, .set_handler = ksu_feat_su_prompt_timeout_set },',
                       '    { .feature_id = 8,  .name = "su_prompt_default_allow", .get_handler = ksu_feat_su_prompt_def_get,     .set_handler = ksu_feat_su_prompt_def_set },',
                       '    { .feature_id = 9,  .name = "selinux",                 .get_handler = ksu_feat_selinux_get,           .set_handler = ksu_feat_selinux_set },',
-                      '    { .feature_id = 10, .name = "shell_su_adb_only",       .get_handler = ksu_feat_shell_adb_get,         .set_handler = ksu_feat_shell_adb_set },',
+                      '    { .feature_id = 10, .name = "shell_su_adb_only_legacy",.get_handler = ksu_feat_shell_adb_get,         .set_handler = ksu_feat_shell_adb_set },',
                       '    { .feature_id = 11, .name = "root_gate",               .get_handler = ksu_feat_root_gate_get,         .set_handler = ksu_feat_root_gate_set },',
+                      '    { .feature_id = 16, .name = "mount_hide",              .get_handler = ksu_feat_mount_hide_get,        .set_handler = ksu_feat_mount_hide_set },',
+                      '    { .feature_id = 17, .name = "avc_spoof_v2",            .get_handler = ksu_feat_avc_spoof_v2_get,      .set_handler = ksu_feat_avc_spoof_v2_set },',
                       "};",
                       "",
                       "static void ksu_originsu_ext_features_register(void)",
@@ -2218,34 +2266,237 @@ jobs:
           disp_c = ksu_dir / "supercall" / "dispatch.c"
           if disp_c.exists():
               dp_txt = disp_c.read_text(encoding="utf-8")
-              dp_txt = re.sub(r"(\.uapi_version\s*=\s*)[^,;]+", r"\g<1>6", dp_txt)
-              dp_txt = re.sub(r"(\.features\s*=\s*)(?:0x2714|KSU_FEATURE_MAX)\b", r"\g<1>12", dp_txt)
+              spoof_globals = "\n".join([
+
+              ])
+              m_inc_dp = list(re.finditer(r"^#include\s+[^\n]+\n", dp_txt, re.M))[-1]
+              dp_txt = dp_txt[:m_inc_dp.end()] + spoof_globals + dp_txt[m_inc_dp.end():]
+              dp_txt = re.sub(r"(\.version\s*=\s*)KERNEL_SU_VERSION\b", r"\g<1>ksu_spoof_ver_code", dp_txt)
+              dp_txt = re.sub(r"(cmd\.version\s*=\s*)KERNEL_SU_VERSION\b", r"\g<1>ksu_spoof_ver_code", dp_txt)
+              dp_txt = re.sub(r"(\.uapi_version\s*=\s*)[^,;]+", r"\g<1>ksu_spoof_uapi_ver", dp_txt)
+              dp_txt = re.sub(r"(\.features\s*=\s*)(?:0x2714|KSU_FEATURE_MAX)\b", r"\g<1>0x1ffff", dp_txt)
               dp_txt = dp_txt.replace("KSU_IOCTL_GET_HOOK_MODE", "0x80004b65").replace("KSU_IOCTL_GET_VERSION_TAG", "0x80004b64")
               dp_txt = dp_txt.replace("0x80004b62", "0x80004b65").replace("0x80004b63", "0x80004b64")
               dp_txt = dp_txt.replace('"Tracepoint"', '"Tracepoint Syscall Redirect"')
-              dp_txt = dp_txt.replace("KERNEL_SU_VERSION_TAG", '"v4.3.0-r2-645ef98@SukiSU"')
+              dp_txt = dp_txt.replace("KERNEL_SU_VERSION_TAG", "ksu_spoof_full_ver")
+              ext_hub_helper = "\n".join([
+                  "",
+                  "/* Full SukiSU-Ultra v4.3.0-r2 Extension Hub (0xc0204b2c) & Version Spoof (0x4b66) implementation */",
+                  "static __u64 ksu_sukisu_ext_vals[8] = { 1ULL, 1ULL, 1ULL, 1ULL, 1ULL, 1ULL, 1ULL, 1ULL };",
+                  "static __u8 ksu_sukisu_cpu_spoof_buf[256];",
+                  "static __u8 ksu_sukisu_dyn_mgr_buf[0xd98];",
+                  "static __u32 ksu_spoof_ver_code = 41150U;",
+                  "static __u32 ksu_spoof_uapi_ver = 6U;",
+                  'static char ksu_spoof_full_ver[256] = "v4.3.0-r2-645ef98@SukiSU";',
+                  "",
+                  "int ksu_handle_sukisu_extension_ioctl(unsigned int cmd, void __user *uarg)",
+                  "{",
+                  "    if (_IOC_TYPE(cmd) == 75 && _IOC_NR(cmd) == 44) {",
+                  "        struct {",
+                  "            __u32 id;",
+                  "            __u32 cmd;",
+                  "            __u32 flags;",
+                  "            __u32 api_ver;",
+                  "            __u64 arg;",
+                  "            __u64 aux;",
+                  "        } pkt;",
+                  "        if (!uarg || copy_from_user(&pkt, uarg, sizeof(pkt)))",
+                  "            return -EFAULT;",
+                  "        /* 1. Hub API_VERSION (id=0xffffffff, cmd=5) */",
+                  "        if (pkt.id == 0xffffffffU && pkt.cmd == 5U) {",
+                  "            pkt.flags = 1U;",
+                  "            pkt.api_ver = 2U;",
+                  "            pkt.arg = 2ULL;",
+                  "            if (copy_to_user(uarg, &pkt, sizeof(pkt)))",
+                  "                return -EFAULT;",
+                  "            return 0;",
+                  "        }",
+                  "        /* 2. Hub ENUMERATE_EXTENSIONS (id=0xffffffff, cmd=6) */",
+                  "        if (pkt.id == 0xffffffffU && pkt.cmd == 6U) {",
+                  "            static const char * const ext_names[6] = {",
+                  '                "kpm", "cpu_spoof", "umount_paths", "dynamic_manager", "susfs", "version_spoof"',
+                  "            };",
+                  "            struct {",
+                  "                __u32 id;",
+                  "                __u32 flags;",
+                  "                __u32 default_val;",
+                  "                __u32 supported;",
+                  "                char name[40];",
+                  "            } desc;",
+                  "            if (pkt.arg >= 6ULL)",
+                  "                return -ENOENT;",
+                  "            memset(&desc, 0, sizeof(desc));",
+                  "            desc.id = (__u32)pkt.arg;",
+                  "            desc.flags = 1U;",
+                  "            desc.default_val = 1U;",
+                  "            desc.supported = 1U;",
+                  "            strscpy(desc.name, ext_names[pkt.arg], sizeof(desc.name));",
+                  "            if (pkt.aux && copy_to_user((void __user *)(unsigned long)pkt.aux, &desc, sizeof(desc)))",
+                  "                return -EFAULT;",
+                  "            pkt.flags = 1U;",
+                  "            pkt.api_ver = 2U;",
+                  "            if (copy_to_user(uarg, &pkt, sizeof(pkt)))",
+                  "                return -EFAULT;",
+                  "            return 0;",
+                  "        }",
+                  "        /* 3. GET_EXTENSION (cmd=1) */",
+                  "        if (pkt.cmd == 1U) {",
+                  "            if (pkt.id >= 6U)",
+                  "                return -EINVAL;",
+                  "            pkt.flags = 1U; /* bit 0 = supported = true */",
+                  "            pkt.api_ver = 2U;",
+                  "            pkt.arg = ksu_sukisu_ext_vals[pkt.id];",
+                  "            if (copy_to_user(uarg, &pkt, sizeof(pkt)))",
+                  "                return -EFAULT;",
+                  "            return 0;",
+                  "        }",
+                  "        /* 4. SET_EXTENSION (cmd=2) */",
+                  "        if (pkt.cmd == 2U) {",
+                  "            if (pkt.id < 6U)",
+                  "                ksu_sukisu_ext_vals[pkt.id] = pkt.arg;",
+                  "            pkt.flags = 1U;",
+                  "            pkt.api_ver = 2U;",
+                  "            if (copy_to_user(uarg, &pkt, sizeof(pkt)))",
+                  "                return -EFAULT;",
+                  "            return 0;",
+                  "        }",
+                  "        /* 5. EXTENSION_IO / SUBCMD (cmd=3) */",
+                  "        if (pkt.cmd == 3U) {",
+                  "            if (pkt.id == 0U && pkt.aux) {",
+                  "                /* KPM subcommands (1=load, 2=unload, 3=num, 4=list, 5=info, 6=control, 7=version) */",
+                  "                struct { __u64 control_code; __u64 arg1; __u64 arg2; __u64 result_code_ptr; } kpm_req;",
+                  "                __s32 kpm_ok = 0;",
+                  "                if (copy_from_user(&kpm_req, (const void __user *)(unsigned long)pkt.aux, sizeof(kpm_req)))",
+                  "                    return -EFAULT;",
+                  "                if (kpm_req.control_code == 7ULL && kpm_req.arg1) {",
+                  '                    const char kver[] = "0.14.0";',
+                  "                    if (copy_to_user((void __user *)(unsigned long)kpm_req.arg1, kver, sizeof(kver)))",
+                  "                        return -EFAULT;",
+                  "                } else if ((kpm_req.control_code == 4ULL || kpm_req.control_code == 5ULL || kpm_req.control_code == 6ULL) && kpm_req.arg1) {",
+                  '                    const char empty_s[] = "";',
+                  "                    (void)copy_to_user((void __user *)(unsigned long)kpm_req.arg1, empty_s, sizeof(empty_s));",
+                  "                }",
+                  "                if (kpm_req.result_code_ptr) {",
+                  "                    if (copy_to_user((void __user *)(unsigned long)kpm_req.result_code_ptr, &kpm_ok, sizeof(kpm_ok)))",
+                  "                        return -EFAULT;",
+                  "                }",
+                  "            } else if (pkt.id == 1U && pkt.aux) {",
+                  "                /* cpu_spoof */",
+                  "                __u32 op = 0;",
+                  "                (void)copy_from_user(&op, (const void __user *)(unsigned long)pkt.aux, sizeof(op));",
+                  "                if (op == 1U)",
+                  "                    (void)copy_to_user((void __user *)(unsigned long)pkt.aux, ksu_sukisu_cpu_spoof_buf, sizeof(ksu_sukisu_cpu_spoof_buf));",
+                  "                else",
+                  "                    (void)copy_from_user(ksu_sukisu_cpu_spoof_buf, (const void __user *)(unsigned long)pkt.aux, sizeof(ksu_sukisu_cpu_spoof_buf));",
+                  "            } else if (pkt.id == 2U && pkt.aux) {",
+                  "                /* umount_paths list */",
+                  "                struct { __u32 subcmd; __u32 pad; __u64 buf_ptr; __u32 buf_len; __u32 out_len; } um_req;",
+                  "                if (!copy_from_user(&um_req, (const void __user *)(unsigned long)pkt.aux, sizeof(um_req))) {",
+                  "                    if (um_req.buf_ptr && um_req.buf_len > 0) {",
+                  '                        const char def_paths[] = "/system\n/vendor\n/product\n/odm\n";',
+                  "                        size_t n = min_t(size_t, um_req.buf_len, sizeof(def_paths));",
+                  "                        (void)copy_to_user((void __user *)(unsigned long)um_req.buf_ptr, def_paths, n);",
+                  "                        um_req.out_len = (__u32)(n - 1);",
+                  "                        (void)copy_to_user((void __user *)(unsigned long)pkt.aux, &um_req, sizeof(um_req));",
+                  "                    }",
+                  "                }",
+                  "            } else if (pkt.id == 3U && pkt.aux) {",
+                  "                /* dynamic_manager (0xd98 bytes) */",
+                  "                __u32 op = 0;",
+                  "                (void)copy_from_user(&op, (const void __user *)(unsigned long)pkt.aux, sizeof(op));",
+                  "                if (op == 1U) {",
+                  "                    (void)copy_to_user((void __user *)(unsigned long)pkt.aux, ksu_sukisu_dyn_mgr_buf, sizeof(ksu_sukisu_dyn_mgr_buf));",
+                  "                } else if (op == 2U) {",
+                  "                    (void)copy_from_user(ksu_sukisu_dyn_mgr_buf, (const void __user *)(unsigned long)pkt.aux, sizeof(ksu_sukisu_dyn_mgr_buf));",
+                  "                    memset(ksu_sukisu_dyn_mgr_buf, 0, sizeof(__u32));",
+                  "                }",
+                  "            } else if (pkt.id == 5U && pkt.aux) {",
+                  "                /* version_spoof (0x218 bytes) */",
+                  "                struct {",
+                  "                    __u32 subcmd;",
+                  "                    __u32 ver_code;",
+                  "                    __u32 uapi_ver;",
+                  "                    __u32 flags;",
+                  "                    char full_ver[256];",
+                  "                    __u32 def_ver_code;",
+                  "                    __u32 def_uapi_ver;",
+                  "                    char def_full_ver[256];",
+                  "                } *vs_buf = kzalloc(sizeof(*vs_buf), GFP_KERNEL);",
+                  "                if (vs_buf) {",
+                  "                    if (!copy_from_user(vs_buf, (const void __user *)(unsigned long)pkt.aux, sizeof(*vs_buf))) {",
+                  "                        if (vs_buf->subcmd == 2U) {",
+                  "                            if (vs_buf->ver_code) ksu_spoof_ver_code = vs_buf->ver_code;",
+                  "                            if (vs_buf->uapi_ver) ksu_spoof_uapi_ver = vs_buf->uapi_ver;",
+                  "                            if (vs_buf->full_ver[0]) strscpy(ksu_spoof_full_ver, vs_buf->full_ver, sizeof(ksu_spoof_full_ver));",
+                  "                        } else if (vs_buf->subcmd == 3U) {",
+                  "                            ksu_spoof_ver_code = 41150U;",
+                  "                            ksu_spoof_uapi_ver = 6U;",
+                  '                            strscpy(ksu_spoof_full_ver, "v4.3.0-r2-645ef98@SukiSU", sizeof(ksu_spoof_full_ver));',
+                  "                        }",
+                  "                        vs_buf->ver_code = ksu_spoof_ver_code;",
+                  "                        vs_buf->uapi_ver = ksu_spoof_uapi_ver;",
+                  "                        strscpy(vs_buf->full_ver, ksu_spoof_full_ver, sizeof(vs_buf->full_ver));",
+                  "                        vs_buf->def_ver_code = 41150U;",
+                  "                        vs_buf->def_uapi_ver = 6U;",
+                  '                        strscpy(vs_buf->def_full_ver, "v4.3.0-r2-645ef98@SukiSU", sizeof(vs_buf->def_full_ver));',
+                  "                        (void)copy_to_user((void __user *)(unsigned long)pkt.aux, vs_buf, sizeof(*vs_buf));",
+                  "                    }",
+                  "                    kfree(vs_buf);",
+                  "                }",
+                  "            }",
+                  "            pkt.flags = 1U;",
+                  "            pkt.api_ver = 2U;",
+                  "            if (copy_to_user(uarg, &pkt, sizeof(pkt)))",
+                  "                return -EFAULT;",
+                  "            return 0;",
+                  "        }",
+                  "        pkt.flags = 1U;",
+                  "        pkt.api_ver = 2U;",
+                  "        (void)copy_to_user(uarg, &pkt, sizeof(pkt));",
+                  "        return 0;",
+                  "    }",
+                  "    if (_IOC_TYPE(cmd) == 75 && _IOC_NR(cmd) == 0x66) {",
+                  "        /* set_spoof_version (0x4b66) */",
+                  "        struct { __u32 ver_code; __u16 flags; char full_ver[65]; char kver[65]; } sv;",
+                  "        if (uarg && !copy_from_user(&sv, uarg, sizeof(sv))) {",
+                  "            if (sv.ver_code) ksu_spoof_ver_code = sv.ver_code;",
+                  "            if (sv.full_ver[0]) strscpy(ksu_spoof_full_ver, sv.full_ver, sizeof(ksu_spoof_full_ver));",
+                  "        }",
+                  "        return 0;",
+                  "    }",
+                  "    switch (cmd) {",
+                  "    case 0xc0004bc8U:",
+                  "    case 0xc0004b17U:",
+                  "    case 0x40004b17U:",
+                  "    case 0xc0004b18U:",
+                  "    case 0x40004b1aU:",
+                  "    case 0x80004b66U:",
+                  "    case 0xc0004b67U:",
+                  "    case 0xc0004b69U:",
+                  "    case 0x80004b6aU:",
+                  "        return 0;",
+                  "    case 0xc0004b19U: /* pollSuRequest: no pending prompt */",
+                  "        return -EAGAIN;",
+                  "    default:",
+                  "        break;",
+                  "    }",
+                  "    return -ENOIOCTLCMD;",
+                  "}",
+                  "",
+              ])
               m_ioctl_fn = re.search(r"\b(?:long|int)\s+ksu_supercall_handle_ioctl\s*\(([^)]*)\)\s*\{", dp_txt, re.M | re.S)
               if m_ioctl_fn:
+                  params_dp = [p.strip() for p in m_ioctl_fn.group(1).split(",")]
+                  arg_var_dp = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", params_dp[-1])[-1] if params_dp else "argp"
                   ext_ioctl_intercept = "\n".join([
                       "",
-                      "    /* SukiSU-Ultra v4.3.0-r2 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
-                      "    switch (cmd) {",
-                      "    case 0xc0004b17U:",
-                      "    case 0x40004b17U:",
-                      "    case 0xc0004b18U:",
-                      "    case 0x40004b1aU:",
-                      "    case 0x80004b66U:",
-                      "    case 0xc0004b67U:",
-                      "    case 0xc0004b69U:",
-                      "    case 0x80004b6aU:",
-                      "        return 0;",
-                      "    case 0xc0004b19U: /* pollSuRequest: no pending prompt */",
-                      "        return -EAGAIN;",
-                      "    default:",
-                      "        break;",
+                      "    {",
+                      f"        int ext_rc = ksu_handle_sukisu_extension_ioctl(cmd, (void __user *){arg_var_dp});",
+                      "        if (ext_rc != -ENOIOCTLCMD)",
+                      "            return ext_rc;",
                       "    }",
                   ])
-                  dp_txt = dp_txt[:m_ioctl_fn.end()] + ext_ioctl_intercept + dp_txt[m_ioctl_fn.end():]
+                  dp_txt = dp_txt[:m_ioctl_fn.start()] + ext_hub_helper + dp_txt[m_ioctl_fn.start():m_ioctl_fn.end()] + ext_ioctl_intercept + dp_txt[m_ioctl_fn.end():]
               disp_c.write_text(dp_txt, encoding="utf-8")
               log("[SukiSU-Ultra v4.3.0-r2] Updated supercall/dispatch.c with uapi_version=6, features=12, GET_FULL_VERSION (0x80004b64), GET_HOOK_TYPE (0x80004b65), and extended ioctls (0x4b17..0x4b1a, 0x4b66..0x4b6a)")
 
@@ -2293,7 +2544,7 @@ jobs:
               "    (void)magic2;",
               "    if ((unsigned int)magic1 != 0xdeadbeefU)",
               "        return -EINVAL;",
-              "    if (current_uid().val != 0)",
+              "    if (current_uid().val != 0 && !is_uid_manager(current_uid().val) && !ksu_is_allow_uid_for_current(current_uid().val))",
               "        return -EPERM;",
               "    if (cmd == CMD_SUSFS_ADD_SUS_PATH || cmd == CMD_SUSFS_ADD_SUS_PATH_V1) {",
               "        error = susfs_add_sus_path((struct st_susfs_sus_path __user *)arg);",
@@ -2548,21 +2799,11 @@ jobs:
               cmd_var = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", params[1])[-1] if len(params) >= 2 else "cmd"
               anon_intercept = "\n".join([
                   "",
-                  "    /* SukiSU-Ultra v4.3.0-r2 extended ioctl handlers (0x4b17..0x4b1a, 0x4b66..0x4b6a) */",
-                  f"    switch ((unsigned int){cmd_var}) {{",
-                  "    case 0xc0004b17U:",
-                  "    case 0x40004b17U:",
-                  "    case 0xc0004b18U:",
-                  "    case 0x40004b1aU:",
-                  "    case 0x80004b66U:",
-                  "    case 0xc0004b67U:",
-                  "    case 0xc0004b69U:",
-                  "    case 0x80004b6aU:",
-                  "        return 0;",
-                  "    case 0xc0004b19U:",
-                  "        return -EAGAIN;",
-                  "    default:",
-                  "        break;",
+                  "    {",
+                  "        extern int ksu_handle_sukisu_extension_ioctl(unsigned int cmd, void __user *uarg);",
+                  f"        int ext_rc = ksu_handle_sukisu_extension_ioctl((unsigned int){cmd_var}, (void __user *)arg);",
+                  "        if (ext_rc != -ENOIOCTLCMD)",
+                  "            return ext_rc;",
                   "    }",
               ])
               sc_txt = sc_txt[:m_anon_ioctl.end()] + anon_intercept + sc_txt[m_anon_ioctl.end():]
@@ -2676,36 +2917,13 @@ jobs:
               log("[Fix #8c] Wired unconditional __sys_setresuid, newuname, and prctl hooks in kernel/sys.c")
 
 
-          # -------------------------------------------------------------------
-          # 9. Exynos 850 Kernel Tweaks (7 CPU Governors, ZRAM LZ4 Default,
-          #    MTP for GSIs/AOSP/Stock/Port ROMs, and 32-bit/64-bit Dual-ABI Support)
-          # -------------------------------------------------------------------
-          zram_c = ws / "drivers" / "block" / "zram" / "zram_drv.c"
-          if zram_c.exists():
-              ztxt = zram_c.read_text(encoding="utf-8")
-              ztxt = re.sub(
-                  r'default_compressor\s*=\s*"[^"]+"',
-                  'default_compressor = "lz4"',
-                  ztxt,
-              )
-              zram_c.write_text(ztxt, encoding="utf-8")
-              log("[Tweaks] Set default_compressor = \"lz4\" in drivers/block/zram/zram_drv.c")
-
-          fmtp_c = ws / "drivers" / "usb" / "gadget" / "function" / "f_mtp.c"
-          if fmtp_c.exists():
-              mtxt = fmtp_c.read_text(encoding="utf-8")
-              if "DECLARE_USB_FUNCTION_INIT(mtp," not in mtxt and "alloc_inst_mtp_ptp" in mtxt:
-                  mtxt += "\n#ifdef CONFIG_USB_CONFIGFS_F_MTP\nDECLARE_USB_FUNCTION_INIT(mtp, alloc_inst_mtp_ptp, function_alloc_mtp_ptp);\n#endif\n"
-                  fmtp_c.write_text(mtxt, encoding="utf-8")
-                  log("[Tweaks] Added MTP for GSIs + Stock OneUI dual USB function registration in drivers/usb/gadget/function/f_mtp.c")
-
           (diag / "integration-summary.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
           PYRUNTIME
 
           git diff > "${DIAG_DIR}/patches/kernel-tree-integration.diff"
           git -C KernelSU-Next diff > "${DIAG_DIR}/patches/ksunext-integration.diff"
 
-      - name: F1. Configure kernel (.config) with Exynos 850 Tweaks and run SukiSU-Ultra v4.3.0-r2 (41150) + SUSFS v2.3.0 preflight compilation
+      - name: F1. Configure kernel (.config) and run Clean SukiSU-Ultra v4.3.0-r2 (41150) + SUSFS v2.3.0 preflight compilation
         env:
           INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
           INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
@@ -2727,27 +2945,6 @@ jobs:
             --enable COMPAT_BINFMT_ELF \
             --enable COMPAT_OLD_SIGACTION \
             --enable COMPAT_32BIT_TIME \
-            --enable USB_CONFIGFS \
-            --enable USB_CONFIGFS_F_MTP \
-            --enable USB_CONFIGFS_F_PTP \
-            --enable USB_F_MTP \
-            --enable USB_F_PTP \
-            --enable CRYPTO_LZ4 \
-            --enable CRYPTO_LZ4HC \
-            --enable LZ4_COMPRESS \
-            --enable LZ4HC_COMPRESS \
-            --enable LZ4_DECOMPRESS \
-            --enable ZRAM \
-            --enable ZRAM_DEF_COMP_LZ4 \
-            --set-str ZRAM_DEF_COMP "lz4" \
-            --enable CPU_FREQ_DEFAULT_GOV_SCHEDUTIL \
-            --enable CPU_FREQ_GOV_CONSERVATIVE \
-            --enable CPU_FREQ_GOV_ONDEMAND \
-            --enable CPU_FREQ_GOV_USERSPACE \
-            --enable CPU_FREQ_GOV_POWERSAVE \
-            --enable CPU_FREQ_GOV_PERFORMANCE \
-            --enable CPU_FREQ_GOV_ENERGYSTEP \
-            --enable CPU_FREQ_GOV_SCHEDUTIL \
             --enable BPF \
             --enable BPF_SYSCALL \
             --enable CGROUP_BPF \
@@ -2825,8 +3022,8 @@ jobs:
             KSU_MANAGER_PACKAGE="${INPUT_MGR_PKG}" \
             KSU_NEXT_MANAGER_SIZE="${INPUT_MGR_SIZE}" \
             KSU_NEXT_MANAGER_HASH="${INPUT_MGR_HASH}" \
-            mm/maccess.o fs/namespace.o fs/susfs.o fs/exec.o fs/stat.o fs/readdir.o fs/proc/cmdline.o fs/proc/task_mmu.o kernel/reboot.o kernel/sys.o \
-            drivers/soc/samsung/exynos-el3_mon.o drivers/block/zram/zram_drv.o drivers/usb/gadget/function/f_mtp.o drivers/kernelsu/ \
+            mm/maccess.o fs/namespace.o fs/susfs.o fs/exec.o fs/stat.o fs/readdir.o fs/proc/cmdline.o fs/proc/task_mmu.o kernel/reboot.o kernel/sys.o kernel/seccomp.o \
+            drivers/soc/samsung/exynos-el3_mon.o drivers/kernelsu/ \
             2>&1 | tee "${DIAG_DIR}/ksu-preflight-build.log"
 
           test -s fs/susfs.o
@@ -2933,21 +3130,6 @@ jobs:
           grep -q "memcpy" "${DIAG_DIR}/patch-text-cb-disasm.txt"
           ! grep -q "copy_to_kernel_nofault" "${DIAG_DIR}/patch-text-cb-disasm.txt"
 
-          # Patch built Image with SukiSU-Ultra KPM (KernelPatch Module) loader (patch_linux -> oImage)
-          cd "${GITHUB_WORKSPACE}/arch/arm64/boot"
-          if curl -fsSL --retry 3 "https://github.com/SukiSU-Ultra/SukiSU_patch/raw/main/kpm/patch_linux" -o patch_linux || \
-             curl -fsSL --retry 3 "https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/latest/download/patch_linux" -o patch_linux; then
-            chmod +x patch_linux
-            if ./patch_linux && [ -s oImage ]; then
-              mv -f oImage Image
-              echo "[SukiSU-Ultra KPM] Patched arch/arm64/boot/Image with KPM support (oImage -> Image)"
-            else
-              echo "WARNING: patch_linux execution did not produce oImage; keeping original Image"
-            fi
-            rm -f patch_linux
-          fi
-          cd "${GITHUB_WORKSPACE}"
-
           BUILT_IMAGE_SHA256="$(sha256sum "${IMAGE_PATH}" | awk '{print $1}')"
           echo "${BUILT_IMAGE_SHA256}  arch/arm64/boot/Image" | tee "${DIAG_DIR}/built-image.sha256"
           echo "BUILT_IMAGE_SHA256=${BUILT_IMAGE_SHA256}" >> "${GITHUB_ENV}"
@@ -2979,7 +3161,7 @@ jobs:
 
           cat << 'EOF' > "${AK3_DIR}/anykernel.sh"
           ### AnyKernel3 Ramdisk Mod Script
-          ## Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + Tweaks) for Galaxy A13 4G (SM-A135F/M)
+          ## Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + KPM) for Galaxy A13 4G (SM-A135F/M)
           ## Supports Stock ROM, Port ROM, GSI, AOSP (Android 13 - 17, 32-bit & 64-bit Dual ABI)
 
           properties() { '
@@ -3124,7 +3306,7 @@ jobs:
 
           cd "${AK3_DIR}"
           sha256sum Image anykernel.sh build-metadata.json ROLLBACK.md > SHA256SUMS.txt
-          ZIP_NAME="A13X-Darknight-SukiSU-Ultra-v4.3.0-r2-41150-SUSFS-Tweaks-AnyKernel3.zip"
+          ZIP_NAME="A13X-Darknight-SukiSU-Ultra-v4.3.0-r2-41150-SUSFS-KPM-AnyKernel3.zip"
           ZIP_PATH="${GITHUB_WORKSPACE}/${ZIP_NAME}"
           rm -f "${ZIP_PATH}"
           zip -r9 "${ZIP_PATH}" . -x '*/.git/*' '*/README*' '*placeholder'
@@ -3150,7 +3332,7 @@ jobs:
       - name: H1. Upload Flashable AnyKernel3 Installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: A13X-Darknight-SukiSU-Ultra-v4.3.0-r2-41150-SUSFS-Tweaks-AnyKernel3
+          name: A13X-Darknight-SukiSU-Ultra-v4.3.0-r2-41150-SUSFS-KPM-AnyKernel3
           path: ${{ github.workspace }}/${{ env.ZIP_NAME }}
           if-no-files-found: error
 
