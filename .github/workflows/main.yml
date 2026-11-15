@@ -2267,7 +2267,9 @@ jobs:
           if disp_c.exists():
               dp_txt = disp_c.read_text(encoding="utf-8")
               spoof_globals = "\n".join([
-
+                  "static __u32 ksu_spoof_ver_code = 41150U;",
+                  "static __u32 ksu_spoof_uapi_ver = 6U;",
+                  'static char ksu_spoof_full_ver[256] = "v4.3.0-r2-645ef98@SukiSU";',
               ])
               m_first_fn = re.search(r"^static\s+int\s+do_grant_root\b", dp_txt, re.M)
               assert m_first_fn, "do_grant_root not found in supercall/dispatch.c"
@@ -2286,9 +2288,6 @@ jobs:
                   "static __u64 ksu_sukisu_ext_vals[8] = { 1ULL, 1ULL, 1ULL, 1ULL, 1ULL, 1ULL, 1ULL, 1ULL };",
                   "static __u8 ksu_sukisu_cpu_spoof_buf[256];",
                   "static __u8 ksu_sukisu_dyn_mgr_buf[0xd98];",
-                  "static __u32 ksu_spoof_ver_code = 41150U;",
-                  "static __u32 ksu_spoof_uapi_ver = 6U;",
-                  'static char ksu_spoof_full_ver[256] = "v4.3.0-r2-645ef98@SukiSU";',
                   "",
                   "int ksu_handle_sukisu_extension_ioctl(unsigned int cmd, void __user *uarg)",
                   "{",
@@ -2394,7 +2393,7 @@ jobs:
                   "                struct { __u32 subcmd; __u32 pad; __u64 buf_ptr; __u32 buf_len; __u32 out_len; } um_req;",
                   "                if (!copy_from_user(&um_req, (const void __user *)(unsigned long)pkt.aux, sizeof(um_req))) {",
                   "                    if (um_req.buf_ptr && um_req.buf_len > 0) {",
-                  '                        const char def_paths[] = "/system\n/vendor\n/product\n/odm\n";',
+                  "                        const char def_paths[] = { 47,115,121,115,116,101,109,10,47,118,101,110,100,111,114,10,47,112,114,111,100,117,99,116,10,47,111,100,109,10,0 };",
                   "                        size_t n = min_t(size_t, um_req.buf_len, sizeof(def_paths));",
                   "                        (void)copy_to_user((void __user *)(unsigned long)um_req.buf_ptr, def_paths, n);",
                   "                        um_req.out_len = (__u32)(n - 1);",
