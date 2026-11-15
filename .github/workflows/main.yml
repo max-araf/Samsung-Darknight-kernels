@@ -2269,8 +2269,9 @@ jobs:
               spoof_globals = "\n".join([
 
               ])
-              m_inc_dp = list(re.finditer(r"^#include\s+[^\n]+\n", dp_txt, re.M))[-1]
-              dp_txt = dp_txt[:m_inc_dp.end()] + spoof_globals + dp_txt[m_inc_dp.end():]
+              m_first_fn = re.search(r"^static\s+int\s+do_grant_root\b", dp_txt, re.M)
+              assert m_first_fn, "do_grant_root not found in supercall/dispatch.c"
+              dp_txt = dp_txt[:m_first_fn.start()] + spoof_globals + "\n" + dp_txt[m_first_fn.start():]
               dp_txt = re.sub(r"(\.version\s*=\s*)KERNEL_SU_VERSION\b", r"\g<1>ksu_spoof_ver_code", dp_txt)
               dp_txt = re.sub(r"(cmd\.version\s*=\s*)KERNEL_SU_VERSION\b", r"\g<1>ksu_spoof_ver_code", dp_txt)
               dp_txt = re.sub(r"(\.uapi_version\s*=\s*)[^,;]+", r"\g<1>ksu_spoof_uapi_ver", dp_txt)
