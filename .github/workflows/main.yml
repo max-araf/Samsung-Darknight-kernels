@@ -1,20 +1,20 @@
-name: Build SM-A135F Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + KPM)
+name: Build SM-A135F Darknight 4.19.325 (DarkNightSu v4.0.2 + SUSFS v2.3.0 + KPM)
 
 on:
   workflow_dispatch:
     inputs:
       ksu_manager_package:
-        description: "SukiSU-Ultra Manager package name"
+        description: "DarkNightSu Manager package name"
         required: true
-        default: "com.sukisu.ultra"
+        default: "com.darknight.ksu"
       ksu_manager_size:
-        description: "SukiSU-Ultra Manager v2 signature block size (hex)"
+        description: "DarkNightSu Manager v2 signature block size (hex)"
         required: true
-        default: "0x35c"
+        default: "0x51c"
       ksu_manager_hash:
-        description: "SukiSU-Ultra Manager v2 certificate SHA-256"
+        description: "DarkNightSu Manager v2 certificate SHA-256"
         required: true
-        default: "d91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968"
+        default: "b28a09ad9d6399dbd69640b05abd973865340d20bc1c462729f1ad63f8a9fd75"
   push:
     branches:
       - main
@@ -40,7 +40,7 @@ env:
   NEUTRON_TAG: "06092026"
   ORIGINSU_RELEASE_URL: "https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases/tag/v4.3.0-r2"
   ORIGINSU_TAG: "v4.3.0-r2"
-  ORIGINSU_FULL_VERSION: "v4.3.0-r2-645ef98@SukiSU"
+  ORIGINSU_FULL_VERSION: "v4.0.2-DarkNightSu"
   ORIGINSU_VERSION: "41150"
   ORIGINSU_UAPI_VERSION: "6"
   KSU_REPO: "KernelSU-Next/KernelSU-Next"
@@ -50,9 +50,9 @@ env:
   KSUNEXT_TAG: "v4.3.0-r2"
   KSUNEXT_VERSION: "41150"
   KSU_LEGACY_SELINUX_COMPAT_REF: "d51ca52c6d370d8e9d62aabde10e41f17ff3ae94"
-  KSU_MANAGER_PACKAGE: "com.sukisu.ultra"
-  KSU_NEXT_MANAGER_SIZE: "0x35c"
-  KSU_NEXT_MANAGER_HASH: "d91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968"
+  KSU_MANAGER_PACKAGE: "com.darknight.ksu"
+  KSU_NEXT_MANAGER_SIZE: "0x51c"
+  KSU_NEXT_MANAGER_HASH: "b28a09ad9d6399dbd69640b05abd973865340d20bc1c462729f1ad63f8a9fd75"
   BRENE_REPO: "https://github.com/rrr333nnn333/BRENE.git"
   BRENE_COMMIT_PREFIX: "d721c6a"
   SUSFS4KSU_REPO: "https://gitlab.com/simonpunk/susfs4ksu.git"
@@ -63,7 +63,7 @@ env:
 
 jobs:
   build-sm-a135f-originsu-susfs:
-    name: Build Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + KPM)
+    name: Build Darknight 4.19.325 (DarkNightSu v4.0.2 + SUSFS v2.3.0 + KPM)
     # CRITICAL: Neutron Clang 24 (06092026) requires GLIBC_2.36, GLIBC_2.38, and
     # GLIBC_ABI_DT_RELR, which are natively provided by Ubuntu 24.04 (glibc 2.39).
     # Ubuntu 22.04 only ships glibc 2.35 and fails to execute clang.
@@ -737,9 +737,9 @@ jobs:
 
       - name: D2 & E. Apply Clean SukiSU-Ultra v4.3.0-r2 (41150) + SUSFS v2.3.0
         env:
-          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
-          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
-          INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'd91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968' }}
+          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.darknight.ksu' }}
+          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x51c' }}
+          INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'b28a09ad9d6399dbd69640b05abd973865340d20bc1c462729f1ad63f8a9fd75' }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -1086,14 +1086,14 @@ jobs:
           assert m_apk, "is_manager_apk(char *path) not found in manager/apk_sign.c"
           apk_fastpath = "\n".join([
               "",
-              '\tif (path && (strstr(path, "/com.sukisu.ultra-") || strstr(path, "/com.sukisu.ultra/"))) {',
-              '\t\tpr_info("SukiSU-Ultra: matched manager package path %s\\n", path);',
+              '\tif (path && (strstr(path, "/com.darknight.ksu-") || strstr(path, "/com.darknight.ksu/") || strstr(path, "/com.darknight.ksu.dev-") || strstr(path, "/com.darknight.ksu.dev/") || strstr(path, "/com.darknight.ksu.pr-") || strstr(path, "/com.darknight.ksu.pr/"))) {',
+              '\t\tpr_info("DarkNightSu: matched manager package path %s\\n", path);',
               "\t\treturn true;",
               "\t}",
           ])
           apk_txt = apk_txt[:m_apk.end()] + apk_fastpath + apk_txt[m_apk.end():]
           apk_c.write_text(apk_txt, encoding="utf-8")
-          log("[Fix #6a] Injected SukiSU-Ultra v4.3.0-r2 (com.sukisu.ultra) package-path fast-path in manager/apk_sign.c")
+          log("[Fix #6a] Injected DarkNightSu (com.darknight.ksu/.dev/.pr) package-path fast-path in manager/apk_sign.c")
 
           tt_c = ksu_dir / "manager" / "throne_tracker.c"
           tt_txt = tt_c.read_text(encoding="utf-8")
@@ -1106,8 +1106,8 @@ jobs:
               "\t{",
               "\t\tstruct uid_data *np;",
               "\t\tlist_for_each_entry(np, &uid_list, list) {",
-              '\t\t\tif (strcmp(np->package, "com.sukisu.ultra") == 0) {',
-              '\t\t\t\tpr_info("SukiSU-Ultra: crowning %s (uid=%d) directly from packages.list\\n", np->package, np->uid);',
+              '\t\t\tif (strcmp(np->package, "com.darknight.ksu") == 0 || strcmp(np->package, "com.darknight.ksu.dev") == 0 || strcmp(np->package, "com.darknight.ksu.pr") == 0) {',
+              '\t\t\t\tpr_info("DarkNightSu: crowning %s (uid=%d) directly from packages.list\\n", np->package, np->uid);',
               f"\t\t\t\t{crown_fn}(np->uid);",
               "\t\t\t}",
               "\t\t}",
@@ -1115,7 +1115,7 @@ jobs:
           ])
           tt_txt = tt_txt.replace(tt_anchor, tt_fallback, 1)
           tt_c.write_text(tt_txt, encoding="utf-8")
-          log("[Fix #6b] Added SukiSU-Ultra v4.3.0-r2 (com.sukisu.ultra) crowning in manager/throne_tracker.c")
+          log("[Fix #6b] Added DarkNightSu (com.darknight.ksu/.dev/.pr) crowning in manager/throne_tracker.c")
 
           # -------------------------------------------------------------------
           # 7. Fix Linux 4.19 seccomp bypass & on-demand throne scan in
@@ -1149,7 +1149,7 @@ jobs:
               "    if (unlikely(nr == __NR_reboot || nr == 142 || nr == 88 || nr == 116)) {",
               "        if (is_uid_manager(uid) || ksu_is_allow_uid_for_current(uid))",
               "            return true;",
-              '        if (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu") || strstr(current->comm, "ksud"))',
+              '        if (strstr(current->comm, "darknight") || strstr(current->comm, "arknight") || strstr(current->comm, "ksud"))',
               "            return true;",
               "    }",
               "    return false;",
@@ -1220,7 +1220,7 @@ jobs:
               "            ksu_throne_retries--;",
               "            track_throne(false);",
               "        }",
-              '        if (!is_uid_manager(new_uid) && (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu"))) {',
+              '        if (!is_uid_manager(new_uid) && (strstr(current->comm, "darknight") || strstr(current->comm, "arknight"))) {',
               "            ksu_set_manager_appid(new_uid % 100000);",
               "        }",
               "    }",
@@ -2670,7 +2670,7 @@ jobs:
               "        char kname[16];",
               "        memset(kname, 0, sizeof(kname));",
               "        if (strncpy_from_user(kname, (const char __user *)arg2, sizeof(kname) - 1) > 0) {",
-              '            if (strstr(kname, "sukisu") || strstr(kname, "ukisu")) {',
+              '            if (strstr(kname, "darknight") || strstr(kname, "arknight")) {',
               "                if (ksu_file_sid == 0) {",
               "                    apply_kernelsu_rules();",
               "                    cache_sid();",
@@ -2689,7 +2689,7 @@ jobs:
               "",
               "    /* 2. PR_GET_SECCOMP (21): ensure seccomp is disabled & fd installed when Manager queries status */",
               "    if (option == 21 && uid >= 10000) {",
-              '        if (!is_uid_manager(uid) && (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu"))) {',
+              '        if (!is_uid_manager(uid) && (strstr(current->comm, "darknight") || strstr(current->comm, "arknight"))) {',
               "            if (ksu_file_sid == 0) {",
               "                apply_kernelsu_rules();",
               "                cache_sid();",
@@ -2723,7 +2723,7 @@ jobs:
               "",
               "    if (!is_uid_manager(uid) && uid >= 10000) {",
               "        track_throne(false);",
-              '        if (!is_uid_manager(uid) && (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu"))) {',
+              '        if (!is_uid_manager(uid) && (strstr(current->comm, "darknight") || strstr(current->comm, "arknight"))) {',
               '            pr_info("KernelSU: crowning manager uid=%u from 0xdeadbeef prctl (%s)\\n", uid, current->comm);',
               "            ksu_set_manager_appid(uid % 100000);",
               "        }",
@@ -2771,7 +2771,7 @@ jobs:
               "    if ((unsigned int)magic2 == KSU_INSTALL_MAGIC2 || (unsigned int)magic2 == 0xdead2022U || (unsigned int)magic2 == 6969U) {\n        magic2 = (int)KSU_INSTALL_MAGIC2;",
               "        if (unlikely(!is_uid_manager(current_uid().val) && current_uid().val >= 10000)) {",
               "            track_throne(false);",
-              '            if (!is_uid_manager(current_uid().val) && (strstr(current->comm, "sukisu") || strstr(current->comm, "ukisu"))) {',
+              '            if (!is_uid_manager(current_uid().val) && (strstr(current->comm, "darknight") || strstr(current->comm, "arknight"))) {',
               "                ksu_set_manager_appid(current_uid().val % 100000);",
               "            }",
               "        }",
@@ -2925,9 +2925,9 @@ jobs:
 
       - name: F1. Configure kernel (.config) and run Clean SukiSU-Ultra v4.3.0-r2 (41150) + SUSFS v2.3.0 preflight compilation
         env:
-          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
-          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
-          INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'd91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968' }}
+          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.darknight.ksu' }}
+          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x51c' }}
+          INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'b28a09ad9d6399dbd69640b05abd973865340d20bc1c462729f1ad63f8a9fd75' }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -3033,9 +3033,9 @@ jobs:
 
       - name: F2. Build full arm64 Image and vmlinux and verify symbols/disassembly
         env:
-          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
-          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
-          INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'd91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968' }}
+          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.darknight.ksu' }}
+          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x51c' }}
+          INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'b28a09ad9d6399dbd69640b05abd973865340d20bc1c462729f1ad63f8a9fd75' }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -3136,9 +3136,9 @@ jobs:
 
       - name: G. Package SukiSU-Ultra-style AnyKernel3 installer and validate scripts/hashes
         env:
-          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.sukisu.ultra' }}
-          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x35c' }}
-          INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'd91ed440459ff575f9bbdb0b294f8d679b1591a37538aafcf1d0073da5dbe968' }}
+          INPUT_MGR_PKG: ${{ github.event.inputs.ksu_manager_package || 'com.darknight.ksu' }}
+          INPUT_MGR_SIZE: ${{ github.event.inputs.ksu_manager_size || '0x51c' }}
+          INPUT_MGR_HASH: ${{ github.event.inputs.ksu_manager_hash || 'b28a09ad9d6399dbd69640b05abd973865340d20bc1c462729f1ad63f8a9fd75' }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -3165,7 +3165,7 @@ jobs:
           ## Supports Stock ROM, Port ROM, GSI, AOSP (Android 13 - 17, 32-bit & 64-bit Dual ABI)
 
           properties() { '
-          kernel.string=Darknight 4.19.325 (SukiSU-Ultra v4.3.0-r2 41150 + SUSFS v2.3.0 + 7-Govs + LZ4 + GSI-MTP)
+          kernel.string=Darknight 4.19.325 (DarkNightSu v4.0.2 + SUSFS v2.3.0 + KPM)
           do.devicecheck=0
           do.modules=0
           do.systemless=1
@@ -3306,7 +3306,7 @@ jobs:
 
           cd "${AK3_DIR}"
           sha256sum Image anykernel.sh build-metadata.json ROLLBACK.md > SHA256SUMS.txt
-          ZIP_NAME="A13X-Darknight-SukiSU-Ultra-v4.3.0-r2-41150-SUSFS-KPM-AnyKernel3.zip"
+          ZIP_NAME="A13X-Darknight-DarkNightSu-v4.0.2-41150-SUSFS-KPM-AnyKernel3.zip"
           ZIP_PATH="${GITHUB_WORKSPACE}/${ZIP_NAME}"
           rm -f "${ZIP_PATH}"
           zip -r9 "${ZIP_PATH}" . -x '*/.git/*' '*/README*' '*placeholder'
@@ -3332,7 +3332,7 @@ jobs:
       - name: H1. Upload Flashable AnyKernel3 Installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: A13X-Darknight-SukiSU-Ultra-v4.3.0-r2-41150-SUSFS-KPM-AnyKernel3
+          name: A13X-Darknight-DarkNightSu-v4.0.2-41150-SUSFS-KPM-AnyKernel3
           path: ${{ github.workspace }}/${{ env.ZIP_NAME }}
           if-no-files-found: error
 
@@ -3340,6 +3340,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: A13X-Darknight-v15-Build-Diagnostics-${{ github.run_id }}
+          name: A13X-Darknight-DarkNightSu-Diagnostics-${{ github.run_id }}
           path: ${{ github.workspace }}/diagnostics/
           if-no-files-found: warn
